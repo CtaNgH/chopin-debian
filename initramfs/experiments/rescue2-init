@@ -1,0 +1,52 @@
+#!/bin/busybox sh
+# chopin rescue2：等待 UDC，打印 mtu3 早期日志，强制 host->device 角色切换，再建 gadget。
+/bin/busybox --install -s /bin 2>/dev/null
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mkdir -p /sys/kernel/config /mnt
+mount -t configfs configfs /sys/kernel/config 2>/dev/null
+
+say() {
+    for d in /dev/tty0 /dev/console /dev/ttyGS0; do
+        echo "$*" > "$d" 2>/dev/null
+    done
+}
+
+say "=============== CHOPIN RESCUE2 ==============="
+i=0
+while [ ! -e /sys/class/udc/11201000.usb ] && [ $i -lt 40 ]; do
+    sleep 1
+    i=$((i+1))
+done
+say "udc waited $i s: $(ls /sys/class/udc 2>/dev/null)"
+say "--- mtu3 dmesg (early) ---"
+dmesg | grep -iE 'mtu3|xhci|vbus|phy|role|drd|ippc|usb' | tail -n 30 | while read line; do say "$line"; done
+
+say "--- role toggle ---"
+for r in /sys/class/usb_role/*/role; do
+    [ -e "$r" ] || continue
+    say "before: $r = $(cat "$r" 2>/dev/null)"
+    echo host > "$r" 2>/dev/null
+    sleep 2
+    echo device > "$r" 2>/dev/null
+    sleep 2
+    say "after:  $r = $(cat "$r" 2>/dev/null)"
+done
+
+if [ -x /bin/chopin-gadget.sh ]; then
+    /bin/chopin-gadget.sh
+fi
+say "--- after gadget ---"
+say "udc state=$(cat /sys/class/udc/11201000.usb/state 2>/dev/null) cur=$(cat /sys/class/udc/11201000.usb/current_speed 2>/dev/null)"
+say "ttyGS: $(ls /dev/ttyGS* 2>/dev/null)"
+say "--- mtu3 dmesg (late) ---"
+dmesg | grep -iE 'mtu3|gadget|vbus|phy|role|drd|ippc' | tail -n 30 | while read line; do say "$line"; done
+
+if mount -t ext4 -o rw /dev/sdc75 /mnt 2>/dev/null; then
+    say "rootfs mounted at /mnt"
+fi
+say "RESCUE2 READY"
+sleep 900

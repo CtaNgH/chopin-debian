@@ -1,0 +1,116 @@
+#!/bin/busybox sh
+# chopin 调试 initramfs：不挂 rootfs、不 switch_root，把 USB/DRM 状态打到屏幕，
+# 并尝试用 role switch + configfs 把 gadget 拉起来。
+/bin/busybox --install -s /bin 2>/dev/null
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mkdir -p /sys/kernel/debug /sys/kernel/config
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+mount -t configfs configfs /sys/kernel/config 2>/dev/null
+
+say() {
+    for d in /dev/tty0 /dev/console /dev/ttyGS0; do
+        echo "$*" > "$d" 2>/dev/null
+    done
+}
+
+say "=============== CHOPIN DEBUG INIT ==============="
+say "kernel: $(uname -r)"
+say "cmdline: $(cat /proc/cmdline)"
+say "--- mtu3 / gadget / role / phy (dmesg) ---"
+dmesg | grep -iE 'mtu3|ssusb|gadget|usb_role|role switch|vbus|11201000|phy|drd' | tail -n 40 | while read line; do say "$line"; done
+
+say "--- udc ---"
+say "list: $(ls /sys/class/udc 2>/dev/null)"
+for u in /sys/class/udc/*; do
+    [ -d "$u" ] || continue
+    say "$(basename "$u") state=$(cat "$u/state" 2>/dev/null) cur=$(cat "$u/current_speed" 2>/dev/null) max=$(cat "$u/maximum_speed" 2>/dev/null)"
+done
+say "--- usb_role class ---"
+say "list: $(ls /sys/class/usb_role 2>/dev/null)"
+for r in /sys/class/usb_role/*/role; do
+    [ -e "$r" ] || continue
+    say "$r = $(cat "$r" 2>/dev/null)"
+done
+
+G=/sys/kernel/config/usb_gadget/g1
+say "--- gadget before ---"
+say "g1: $(ls "$G" 2>/dev/null | tr '\n' ' ')"
+say "UDC: [$(cat "$G/UDC" 2>/dev/null)]"
+say "functions: $(ls "$G/functions" 2>/dev/null | tr '\n' ' ')"
+say "config c.1: $(ls "$G/configs/c.1" 2>/dev/null | tr '\n' ' ')"
+
+# 建 gadget（幂等）
+mkdir -p "$G"
+if [ ! -s "$G/idVendor" ]; then
+    echo 0x1d6b > "$G/idVendor"
+    echo 0x0104 > "$G/idProduct"
+    echo 0x0200 > "$G/bcdUSB"
+    mkdir -p "$G/strings/0x409"
+    echo chopin > "$G/strings/0x409/serialnumber"
+    echo Xiaomi > "$G/strings/0x409/manufacturer"
+    echo chopin-debug > "$G/strings/0x409/product"
+    mkdir -p "$G/configs/c.1/strings/0x409"
+    echo "debug ACM" > "$G/configs/c.1/strings/0x409/configuration"
+fi
+mkdir -p "$G/functions/acm.usb0"
+ln -s "$G/functions/acm.usb0" "$G/configs/c.1/" 2>/dev/null
+say "acm dir: $(ls "$G/functions/acm.usb0" 2>/dev/null | tr '\n' ' ')"
+
+# 强制一次 host -> device 角色切换，绕过可能的 is_host 初值早退
+for r in /sys/class/usb_role/*/role; do
+    [ -e "$r" ] || continue
+    say "toggle role via $r"
+    echo host > "$r" 2>/dev/null
+    sleep 2
+    echo device > "$r" 2>/dev/null
+    sleep 2
+    say "role now: $(cat "$r" 2>/dev/null)"
+done
+
+say "--- waiting for UDC ---"
+i=0
+UDC=""
+while [ $i -lt 40 ]; do
+    UDC="$(ls /sys/class/udc 2>/dev/null | head -1)"
+    [ -n "$UDC" ] && break
+    sleep 1
+    i=$((i+1))
+done
+say "udc=$UDC after $i s"
+
+if [ -n "$UDC" ]; then
+    i=0
+    while [ $i -lt 20 ]; do
+        if [ -s "$G/UDC" ]; then
+            say "already bound: $(cat "$G/UDC")"
+            break
+        fi
+        say "bind attempt $i: $UDC"
+        if echo "$UDC" > "$G/UDC" 2>/tmp/bind.err; then
+            say "bind OK"
+            break
+        fi
+        say "bind err: $(cat /tmp/bind.err 2>/dev/null)"
+        sleep 2
+        i=$((i+1))
+    done
+fi
+
+say "--- after bind ---"
+say "UDC: [$(cat "$G/UDC" 2>/dev/null)]"
+for u in /sys/class/udc/*; do
+    [ -d "$u" ] || continue
+    say "$(basename "$u") state=$(cat "$u/state" 2>/dev/null) cur=$(cat "$u/current_speed" 2>/dev/null)"
+done
+say "ttyGS: $(ls /dev/ttyGS* 2>/dev/null)"
+say "=============== DEBUG INIT DONE ==============="
+
+if [ -e /dev/ttyGS0 ]; then
+    setsid sh -c 'exec sh </dev/ttyGS0 >/dev/ttyGS0 2>&1' &
+    say "shell started on ttyGS0"
+fi
+sleep 600

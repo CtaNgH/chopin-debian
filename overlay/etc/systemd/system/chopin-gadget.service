@@ -1,0 +1,13 @@
+[Unit]
+Description=chopin USB gadget (configfs: CDC-ACM + optional RNDIS)
+DefaultDependencies=no
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=CHOPIN_UDC_WAIT=120
+ExecStart=/usr/local/sbin/chopin-gadget.sh
+
+[Install]
+WantedBy=multi-user.target

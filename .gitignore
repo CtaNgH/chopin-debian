@@ -1,0 +1,9 @@
+
+# 构建工作目录与产物
+/build/
+/out/
+/third_party/
+*.img
+*.cpio.gz
+__pycache__/
+*.pyc

@@ -1,0 +1,11 @@
+[Unit]
+Description=chopin bring-up diagnostics (state into /dev/kmsg)
+After=chopin-gadget.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/chopin-diag.sh
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,69 @@
+#!/bin/busybox sh
+# chopin 调试 initramfs v3：先看上一次启动的 pstore，再建一个带 config c.1 的 gadget 并显式绑定。
+/bin/busybox --install -s /bin 2>/dev/null
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mkdir -p /sys/kernel/debug /sys/kernel/config /sys/fs/pstore
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+mount -t configfs configfs /sys/kernel/config 2>/dev/null
+mount -t pstore pstore /sys/fs/pstore 2>/dev/null
+
+say() {
+    for d in /dev/tty0 /dev/console /dev/ttyGS0; do
+        echo "$*" > "$d" 2>/dev/null
+    done
+}
+
+say "=============== CHOPIN DEBUG3 ==============="
+say "--- previous boot: gadget/diag lines ---"
+grep -ahE 'CHOPIN-GADGET|CHOPIN-DIAG|gadget|mtu3|UDC|usb_role|configfs' /sys/fs/pstore/* 2>/dev/null | tail -n 35 | while read line; do say "$line"; done
+
+G=/sys/kernel/config/usb_gadget/g1
+rm -rf "$G" 2>/dev/null
+mkdir -p "$G"
+echo 0x1d6b > "$G/idVendor"
+echo 0x0104 > "$G/idProduct"
+echo 0x0200 > "$G/bcdUSB"
+mkdir -p "$G/strings/0x409"
+echo chopin > "$G/strings/0x409/serialnumber"
+echo Xiaomi > "$G/strings/0x409/manufacturer"
+echo chopin-debug3 > "$G/strings/0x409/product"
+mkdir -p "$G/configs/c.1/strings/0x409"
+echo "debug ACM" > "$G/configs/c.1/strings/0x409/configuration"
+mkdir -p "$G/functions/acm.usb0"
+ln -s "$G/functions/acm.usb0" "$G/configs/c.1/" 2>/dev/null
+say "idVendor=[$(cat "$G/idVendor" 2>/dev/null)] idProduct=[$(cat "$G/idProduct" 2>/dev/null)]"
+say "functions: $(ls "$G/functions" 2>/dev/null)"
+say "configs: $(ls "$G/configs" 2>/dev/null)"
+say "c.1: $(ls "$G/configs/c.1" 2>/dev/null)"
+
+i=0
+UDC=""
+while [ $i -lt 20 ]; do
+    UDC="$(ls /sys/class/udc 2>/dev/null | head -1)"
+    [ -n "$UDC" ] && break
+    sleep 1
+    i=$((i+1))
+done
+say "udc=[$UDC]"
+
+if [ -n "$UDC" ]; then
+    echo "$UDC" > "$G/UDC" 2>/tmp/e
+    rc=$?
+    say "bind rc=$rc err=[$(cat /tmp/e 2>/dev/null)]"
+    say "UDC file=[$(cat "$G/UDC" 2>/dev/null)]"
+    say "state=$(cat /sys/class/udc/$UDC/state 2>/dev/null)"
+fi
+say "--- dmesg after bind ---"
+dmesg | grep -iE 'mtu3|gadget|configfs|udc|usb_role' | tail -n 25 | while read line; do say "$line"; done
+say "ttyGS: $(ls /dev/ttyGS* 2>/dev/null)"
+say "=============== DEBUG3 DONE ==============="
+
+if [ -e /dev/ttyGS0 ]; then
+    setsid sh -c 'exec sh </dev/ttyGS0 >/dev/ttyGS0 2>&1' &
+    say "shell on ttyGS0"
+fi
+sleep 600

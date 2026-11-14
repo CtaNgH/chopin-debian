@@ -1,0 +1,122 @@
+#!/bin/busybox sh
+# chopin probe initramfs：正常启动路径 + 把 USB/DRM 状态时间线记录到 rootfs。
+#
+# 为什么需要它：正常启动（switch_root -> systemd）后 USB 不枚举，而 debug3
+# （只停在 initramfs）能枚举。本 init 与正常 init 相同的启动路径，但：
+#   1) gadget 绑定后常开 /dev/ttyGS0 写端（fd 8），保证主机侧 OUT 传输有人收；
+#   2) 把所有状态追加到 /var/log/chopin-boot.log（fd 9），switch_root 后仍可写，
+#      即使 USB 掉线，下次用救援镜像读盘即可拿到完整时间线。
+/bin/busybox --install -s /bin 2>/dev/null
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mkdir -p /dev/pts /newroot /tmp /run /sys/fs/pstore
+mount -t devpts devpts /dev/pts 2>/dev/null
+mount -t pstore pstore /sys/fs/pstore 2>/dev/null
+
+say() {
+    for d in /dev/tty0 /dev/console; do
+        echo "$*" > "$d" 2>/dev/null
+    done
+}
+
+klog() { echo "<3>CHOPIN-PROBE $*" > /dev/kmsg 2>/dev/null; }
+
+snap() {
+    UDC="$(ls /sys/class/udc 2>/dev/null | head -1)"
+    GSTATE="$(cat /sys/class/udc/"$UDC"/state 2>/dev/null)"
+    ROLE="$(cat /sys/class/usb_role/*/role 2>/dev/null | tr '\n' ' ')"
+    GUDC="$(cat /sys/kernel/config/usb_gadget/g1/UDC 2>/dev/null)"
+    TTY="$(ls /dev/ttyGS* 2>/dev/null | tr '\n' ' ')"
+    echo "udc=[$UDC] state=[$GSTATE] role=[$ROLE] g1_UDC=[$GUDC] tty=[$TTY]"
+}
+
+say "=========== CHOPIN PROBE ==========="
+say "kernel: $(uname -r)"
+say "cmdline: $(cat /proc/cmdline)"
+klog "probe start kernel=$(uname -r)"
+
+if [ -x /bin/chopin-gadget.sh ]; then
+    /bin/chopin-gadget.sh
+fi
+
+say "after gadget: $(snap)"
+klog "after gadget: $(snap)"
+
+# 常开 ttyGS0 写端：保证主机侧写数据时 gadget 的 OUT 请求已排队（gs_open -> gs_start_io）。
+if [ -c /dev/ttyGS0 ]; then
+    exec 8>>/dev/ttyGS0
+    echo "chopin-probe: serial fd open" >&8 2>/dev/null
+fi
+
+say "waiting for root filesystem (LABEL=chopinroot) ..."
+ROOT=""
+i=0
+while [ $i -lt 20 ]; do
+    for dev in $(blkid -L chopinroot 2>/dev/null) /dev/sdc75; do
+        [ -b "$dev" ] || continue
+        if mount -t ext4 -o rw,noatime "$dev" /newroot 2>/dev/null; then
+            ROOT="$dev"
+            break
+        fi
+    done
+    [ -n "$ROOT" ] && break
+    sleep 1
+    i=$((i+1))
+done
+
+if [ -z "$ROOT" ]; then
+    say "chopin-probe: no root filesystem, dropping to shell"
+    klog "probe: root filesystem not found"
+    exec sh
+fi
+
+mkdir -p /newroot/var/log
+exec 9>>/newroot/var/log/chopin-boot.log
+
+{
+    echo ""
+    echo "===== chopin probe boot ====="
+    echo "kernel: $(uname -r)"
+    echo "cmdline: $(cat /proc/cmdline)"
+    echo "root: $ROOT"
+    echo "initramfs gadget:"
+    echo "  $(snap)"
+    echo "--- mtu3/usb dmesg ---"
+    dmesg | grep -iE 'mtu3|ssusb|role|vbus|otg_vbus|11201000|usb_role|drd|CHOPIN' | tail -80
+    echo "--- timeline (t seconds since probe) ---"
+} >&9 2>&1
+
+(
+    t=0
+    last=""
+    while [ $t -lt 900 ]; do
+        cur="$(snap) gdm=[$(systemctl is-active gdm3 2>/dev/null)]"
+        echo "[t=$t] $cur" >&9 2>/dev/null
+        echo "chopin-probe [t=$t] $cur" >&8 2>/dev/null
+        if [ "$cur" != "$last" ]; then
+            klog "probe t=$t $cur"
+            last="$cur"
+        fi
+        if [ $t -lt 60 ]; then
+            sleep 1
+            t=$((t+1))
+        else
+            sleep 5
+            t=$((t+5))
+        fi
+    done
+    echo "probe timeline done" >&9 2>/dev/null
+) &
+
+echo "===== switch_root -> Debian =====" >&9 2>/dev/null
+echo "chopin-probe: switching to Debian (root=$ROOT)" >&8 2>/dev/null
+klog "probe: switching to Debian root=$ROOT"
+say "chopin: root=$ROOT, switching to Debian"
+
+mount --move /dev /newroot/dev 2>/dev/null
+mount --move /proc /newroot/proc 2>/dev/null
+mount --move /sys /newroot/sys 2>/dev/null
+exec switch_root /newroot /sbin/init

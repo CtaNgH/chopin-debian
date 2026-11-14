@@ -1,0 +1,117 @@
+#!/bin/busybox sh
+# chopin rescue-probe：debug3 同款（已验证能枚举 COM11）的 gadget 初始化，
+# 同时挂 rootfs（只读）把上一轮 probe 写下的 /var/log/chopin-boot.log 周期回放到串口。
+# 这样即使正常启动时 USB 不枚举，也能拿到启动时间线 + 当前 dmesg/分区标签。
+/bin/busybox --install -s /bin 2>/dev/null
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mkdir -p /sys/kernel/debug /sys/kernel/config /sys/fs/pstore /mnt
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+mount -t configfs configfs /sys/kernel/config 2>/dev/null
+mount -t pstore pstore /sys/fs/pstore 2>/dev/null
+
+say() {
+    for d in /dev/tty0 /dev/console /dev/ttyGS0; do
+        echo "$*" > "$d" 2>/dev/null
+    done
+}
+
+say "=========== CHOPIN RESCUE-PROBE ==========="
+say "kernel: $(uname -r)"
+say "cmdline: $(cat /proc/cmdline)"
+
+ROOT=""
+for dev in $(blkid -L chopinroot 2>/dev/null) /dev/sdc75; do
+    [ -b "$dev" ] || continue
+    if mount -t ext4 -o ro,noatime "$dev" /mnt 2>/dev/null; then
+        ROOT="$dev"
+        break
+    fi
+done
+if [ -n "$ROOT" ]; then
+    say "rootfs(ro): $ROOT"
+else
+    say "rootfs mount FAILED"
+fi
+say "partlabels: $(ls /dev/disk/by-partlabel 2>/dev/null | tr '\n' ' ')"
+
+# ---- debug3 同款 gadget 初始化 ----
+G=/sys/kernel/config/usb_gadget/g1
+rm -rf "$G" 2>/dev/null
+mkdir -p "$G"
+echo 0x1d6b > "$G/idVendor"
+echo 0x0104 > "$G/idProduct"
+echo 0x0200 > "$G/bcdUSB"
+mkdir -p "$G/strings/0x409"
+echo chopin > "$G/strings/0x409/serialnumber"
+echo Xiaomi > "$G/strings/0x409/manufacturer"
+echo chopin-rescue-probe > "$G/strings/0x409/product"
+mkdir -p "$G/configs/c.1/strings/0x409"
+echo "rescue ACM" > "$G/configs/c.1/strings/0x409/configuration"
+mkdir -p "$G/functions/acm.usb0"
+ln -s "$G/functions/acm.usb0" "$G/configs/c.1/" 2>/dev/null
+
+i=0
+UDC=""
+while [ $i -lt 20 ]; do
+    UDC="$(ls /sys/class/udc 2>/dev/null | head -1)"
+    [ -n "$UDC" ] && break
+    sleep 1
+    i=$((i+1))
+done
+say "udc=[$UDC]"
+if [ -n "$UDC" ]; then
+    echo "$UDC" > "$G/UDC" 2>/tmp/e
+    say "bind rc=$? err=[$(cat /tmp/e 2>/dev/null)] g1_UDC=[$(cat "$G/UDC" 2>/dev/null)] state=[$(cat "/sys/class/udc/$UDC/state" 2>/dev/null)]"
+fi
+say "role=[$(cat /sys/class/usb_role/*/role 2>/dev/null | tr '\n' ' ')]"
+say "ttyGS=[$(ls /dev/ttyGS* 2>/dev/null | tr '\n' ' ')]"
+
+if [ -c /dev/ttyGS0 ]; then
+    exec 8>>/dev/ttyGS0
+fi
+
+diag() {
+    echo "--- diag ---"
+    echo "g1: $(ls /sys/kernel/config/usb_gadget/g1 2>/dev/null | tr '\n' ' ')"
+    echo "g1_UDC=[$(cat /sys/kernel/config/usb_gadget/g1/UDC 2>/dev/null)]"
+    echo "udc_state=[$(cat /sys/class/udc/*/state 2>/dev/null)]"
+    echo "role=[$(cat /sys/class/usb_role/*/role 2>/dev/null | tr '\n' ' ')]"
+    echo "g_multi_driver: $(ls /sys/bus/platform/drivers/g_multi 2>/dev/null | tr '\n' ' ')"
+    echo "g_serial_driver: $(ls /sys/bus/platform/drivers/g_serial 2>/dev/null | tr '\n' ' ')"
+    echo "platform_gadget_devices: $(ls /sys/bus/platform/devices 2>/dev/null | grep -i gadget | tr '\n' ' ')"
+    echo "pstore: $(ls /sys/fs/pstore 2>/dev/null | tr '\n' ' ')"
+    dmesg | grep -iE 'g_multi|mtu3|ssusb|usb_role|vbus|11201000|gadget' | tail -n 40
+}
+
+(
+    while :; do
+        if [ -n "$ROOT" ] && [ -f /mnt/var/log/chopin-boot.log ]; then
+            {
+                echo ""
+                echo "==================== CHOPIN LOG DUMP ===================="
+                echo "root=$ROOT size=$(wc -c < /mnt/var/log/chopin-boot.log 2>/dev/null)"
+                tail -n 600 /mnt/var/log/chopin-boot.log
+                echo "==================== END LOG DUMP ===================="
+                diag
+                echo "partlabels: $(ls /dev/disk/by-partlabel 2>/dev/null | tr '\n' ' ')"
+            } > /dev/ttyGS0 2>&1
+        else
+            echo "chopin-rescue-probe: no rootfs log (root=[$ROOT])" > /dev/ttyGS0 2>/dev/null
+        fi
+        sleep 20
+    done
+) &
+
+(
+    while :; do
+        setsid sh -c 'exec sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1'
+        sleep 2
+    done
+) &
+
+say "RESCUE-PROBE READY (log replay every 20s)"
+sleep 900

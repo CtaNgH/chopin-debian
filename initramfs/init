@@ -1,0 +1,75 @@
+#!/bin/busybox sh
+# chopin Debian 13 initramfs：pstore 摘要 -> USB gadget -> 挂 rootfs -> switch_root
+/bin/busybox --install -s /bin 2>/dev/null
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mkdir -p /dev/pts /newroot /tmp /run /sys/fs/pstore
+mount -t devpts devpts /dev/pts 2>/dev/null
+mount -t pstore pstore /sys/fs/pstore 2>/dev/null
+
+say() {
+    for d in /dev/tty0 /dev/console; do
+        echo "$*" > "$d" 2>/dev/null
+    done
+}
+klog() { echo "<3>CHOPIN-DIAG $*" > /dev/kmsg 2>/dev/null; }
+
+pstore_digest() {
+    echo
+    echo "============ CHOPIN previous boot (ramoops) ============"
+    echo "files: $(ls /sys/fs/pstore 2>/dev/null | tr '\n' ' ')"
+    grep -ahE 'CHOPIN-DIAG|CHOPIN-GADGET|g_multi|udc|UDC|gadget|mtu3|usb[0-9]|panic|SError|Call trace' \
+        /sys/fs/pstore/* 2>/dev/null | tail -n 70
+    echo "============ end of digest ============"
+    echo
+}
+
+if [ -x /bin/chopin-gadget.sh ]; then
+    /bin/chopin-gadget.sh
+fi
+
+UDC_NOW="$(ls /sys/class/udc 2>/dev/null | tr '\n' ' ')"
+UDC_STATE="$(cat /sys/class/udc/*/state 2>/dev/null)"
+klog "initramfs: udc=[$UDC_NOW] state=$UDC_STATE ttyGS=[$(ls /dev/ttyGS* 2>/dev/null | tr '\n' ' ')]"
+
+pstore_digest > /dev/tty0 2>/dev/null
+( cat /sys/fs/pstore/* 2>/dev/null > /dev/ttyGS0 ) &
+
+say "chopin: waiting for root filesystem (LABEL=chopinroot) ..."
+ROOT=""
+i=0
+while [ $i -lt 20 ]; do
+    for dev in $(blkid -L chopinroot 2>/dev/null) /dev/sdc75; do
+        [ -b "$dev" ] || continue
+        if mount -t ext4 -o rw,noatime "$dev" /newroot 2>/dev/null; then
+            ROOT="$dev"
+            break
+        fi
+    done
+    [ -n "$ROOT" ] && break
+    sleep 1
+    i=$((i+1))
+done
+
+if [ -z "$ROOT" ]; then
+    say "chopin: no root filesystem (LABEL=chopinroot), dropping to shell"
+    klog "initramfs: root filesystem not found"
+    exec sh
+fi
+
+i=0
+while [ ! -e /dev/ttyGS0 ] && [ $i -lt 15 ]; do
+    sleep 1
+    i=$((i+1))
+done
+say "chopin: ttyGS0 after $i s: $(ls /dev/ttyGS* 2>/dev/null)"
+say "chopin: root=$ROOT, switching to Debian"
+klog "initramfs: root=$ROOT"
+
+mount --move /dev /newroot/dev 2>/dev/null
+mount --move /proc /newroot/proc 2>/dev/null
+mount --move /sys /newroot/sys 2>/dev/null
+exec switch_root /newroot /sbin/init

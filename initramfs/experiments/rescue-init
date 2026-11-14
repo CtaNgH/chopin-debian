@@ -1,0 +1,39 @@
+#!/bin/busybox sh
+# chopin rescue initramfs：只做 gadget + 串口 shell + 挂 rootfs，方便修系统。
+/bin/busybox --install -s /bin 2>/dev/null
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mkdir -p /sys/kernel/config /mnt
+mount -t configfs configfs /sys/kernel/config 2>/dev/null
+
+say() {
+    for d in /dev/tty0 /dev/console /dev/ttyGS0; do
+        echo "$*" > "$d" 2>/dev/null
+    done
+}
+
+say "=============== CHOPIN RESCUE ==============="
+if [ -x /bin/chopin-gadget.sh ]; then
+    /bin/chopin-gadget.sh
+fi
+
+i=0
+while [ ! -e /dev/ttyGS0 ] && [ $i -lt 20 ]; do
+    sleep 1
+    i=$((i+1))
+done
+say "ttyGS after $i s: $(ls /dev/ttyGS* 2>/dev/null)"
+
+if mount -t ext4 -o rw /dev/sdc75 /mnt 2>/dev/null; then
+    say "rootfs mounted at /mnt"
+else
+    say "rootfs mount failed"
+fi
+
+say "starting shell on ttyGS0"
+setsid sh -c 'exec sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1' &
+say "RESCUE READY - shell on ttyGS0"
+sleep 900

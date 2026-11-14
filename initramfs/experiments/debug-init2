@@ -1,0 +1,93 @@
+#!/bin/busybox sh
+# chopin 调试 initramfs v2：重点查 g_multi 是否占着 UDC，以及 configfs 绑定的真实 errno。
+/bin/busybox --install -s /bin 2>/dev/null
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mkdir -p /sys/kernel/debug /sys/kernel/config
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+mount -t configfs configfs /sys/kernel/config 2>/dev/null
+
+say() {
+    for d in /dev/tty0 /dev/console /dev/ttyGS0; do
+        echo "$*" > "$d" 2>/dev/null
+    done
+}
+
+say "=============== CHOPIN DEBUG2 ==============="
+say "kernel: $(uname -r)"
+say "--- mtu3 boot ---"
+dmesg | grep -iE 'mtu3|g_multi|gadget|udc' | tail -n 30 | while read line; do say "$line"; done
+say "--- udc ---"
+say "list: $(ls /sys/class/udc 2>/dev/null)"
+for u in /sys/class/udc/*; do
+    [ -d "$u" ] || continue
+    say "$(basename "$u") state=$(cat "$u/state" 2>/dev/null)"
+    say "  driver: $(readlink "$u/device/driver" 2>/dev/null)"
+    say "  uevent: $(cat "$u/uevent" 2>/dev/null | tr '\n' ' ')"
+done
+say "--- g_multi driver/devices ---"
+say "drivers: $(ls /sys/bus/platform/drivers 2>/dev/null | grep -i gadget)"
+say "g_multi: $(ls /sys/bus/platform/drivers/g_multi 2>/dev/null)"
+say "gadget devices: $(ls /sys/bus/platform/devices 2>/dev/null | grep -i gadget)"
+
+for d in /sys/bus/platform/drivers/g_multi /sys/bus/platform/drivers/g_serial /sys/bus/platform/drivers/gadget; do
+    [ -d "$d" ] || continue
+    for dev in "$d"/gadget.* "$d"/g_multi.*; do
+        [ -e "$dev" ] || continue
+        name=$(basename "$dev")
+        say "unbind $name from $(basename "$d")"
+        echo "$name" > "$d/unbind" 2>/tmp/unbind.err
+        say "  rc=$? err=[$(cat /tmp/unbind.err 2>/dev/null)]"
+    done
+done
+
+G=/sys/kernel/config/usb_gadget/g1
+mkdir -p "$G"
+if [ ! -s "$G/idVendor" ]; then
+    echo 0x1d6b > "$G/idVendor"
+    echo 0x0104 > "$G/idProduct"
+    echo 0x0200 > "$G/bcdUSB"
+    mkdir -p "$G/strings/0x409"
+    echo chopin > "$G/strings/0x409/serialnumber"
+    echo Xiaomi > "$G/strings/0x409/manufacturer"
+    echo chopin-debug2 > "$G/strings/0x409/product"
+    mkdir -p "$G/configs/c.1/strings/0x409"
+    echo "debug ACM" > "$G/configs/c.1/strings/0x409/configuration"
+fi
+mkdir -p "$G/functions/acm.usb0"
+ln -s "$G/functions/acm.usb0" "$G/configs/c.1/" 2>/dev/null
+say "functions: $(ls "$G/functions" 2>/dev/null)"
+say "config c.1: $(ls "$G/configs/c.1" 2>/dev/null)"
+say "acm content: $(ls "$G/functions/acm.usb0" 2>/dev/null | tr '\n' ' ')"
+
+i=0
+UDC=""
+while [ $i -lt 20 ]; do
+    UDC="$(ls /sys/class/udc 2>/dev/null | head -1)"
+    [ -n "$UDC" ] && break
+    sleep 1
+    i=$((i+1))
+done
+say "udc=[$UDC]"
+
+if [ -n "$UDC" ]; then
+    say "--- bind ---"
+    echo "$UDC" > "$G/UDC" 2>/tmp/e
+    rc=$?
+    say "bind rc=$rc err=[$(cat /tmp/e 2>/dev/null)]"
+    say "UDC file=[$(cat "$G/UDC" 2>/dev/null)]"
+    say "state=$(cat /sys/class/udc/$UDC/state 2>/dev/null)"
+fi
+say "--- dmesg after bind ---"
+dmesg | tail -n 30 | while read line; do say "$line"; done
+say "ttyGS: $(ls /dev/ttyGS* 2>/dev/null)"
+say "=============== DEBUG2 DONE ==============="
+
+if [ -e /dev/ttyGS0 ]; then
+    setsid sh -c 'exec sh </dev/ttyGS0 >/dev/ttyGS0 2>&1' &
+    say "shell on ttyGS0"
+fi
+sleep 600

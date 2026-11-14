@@ -1,0 +1,3 @@
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] @MIRROR@ trixie main contrib non-free-firmware
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] @MIRROR@ trixie-updates main contrib non-free-firmware
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] @SECURITY@ trixie-security main contrib non-free-firmware
