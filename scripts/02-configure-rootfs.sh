@@ -34,6 +34,10 @@ in_chroot locale-gen
 in_chroot update-locale LANG=en_US.UTF-8
 
 if ! in_chroot id "$CHOPIN_USER" >/dev/null 2>&1; then
+    # minbase 可能缺少这些附加组；先补齐，保证 --skip-gnome 也能构建
+    for g in sudo audio video render input plugdev netdev; do
+        grep -q "^$g:" "$ROOTFS/etc/group" || in_chroot groupadd -r "$g"
+    done
     in_chroot useradd -m -s /bin/bash -G sudo,audio,video,render,input,plugdev,netdev "$CHOPIN_USER"
 fi
 echo "$CHOPIN_USER:$CHOPIN_PASSWORD" | in_chroot chpasswd

@@ -62,11 +62,19 @@ write_sources() {
         "$ROOTFS/usr/share/keyrings/debian-archive-keyring.gpg"
 }
 
-# 仅当单元存在时 enable，便于 --skip-gnome 的精简构建也能通过。
+# 仅当单元文件存在时 enable。
+# 注意：chroot 里没有运行中的 systemd，systemctl list-unit-files 不可靠，直接查文件。
+unit_exists() {
+    local unit="$1"
+    [ -e "$ROOTFS/usr/lib/systemd/system/$unit.service" ] ||
+    [ -e "$ROOTFS/lib/systemd/system/$unit.service" ] ||
+    [ -e "$ROOTFS/etc/systemd/system/$unit.service" ]
+}
+
 enable_unit() {
     local unit="$1"
-    if in_chroot systemctl list-unit-files "$unit.service" 2>/dev/null | grep -q "^$unit.service"; then
-        in_chroot systemctl enable "$unit"
+    if unit_exists "$unit"; then
+        in_chroot systemctl enable "$unit" || log "enable $unit 失败"
     else
         log "跳过不存在的单元：$unit.service"
     fi
