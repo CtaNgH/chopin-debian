@@ -18,7 +18,7 @@ rootfs/镜像/Mesa 源码树等大文件全部在 `.gitignore` 里，可随时�
 
 > 构建手册是本文；当前状态与阻塞见 [docs/PLAN.md](docs/PLAN.md)；
 > 实机现场记录见 [docs/BRINGUP.md](docs/BRINGUP.md)；完整 v1 方案见 [docs/debian.md](docs/debian.md)。
-> 内核部分在独立仓库 [chopin-kernel](../chopin-kernel)。
+> 内核部分在独立仓库 [chopin-kernel](../kernel)。
 
 ---
 
@@ -74,7 +74,7 @@ sudo apt-get install -y mmdebstrap qemu-user-static binfmt-support debootstrap \
 
 ## 3. 快速开始
 
-先构建内核（见 [chopin-kernel](../chopin-kernel)）：
+先构建内核（见 [chopin-kernel](../kernel)）：
 
 ```bash
 cd chopin-linux/kernel
