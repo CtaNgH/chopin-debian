@@ -10,7 +10,7 @@ require_root
 
 # 当前阶段不替换 libgallium：参考构建只有 panfrost（-Dllvm=disabled，没有 swrast），
 # 替换后 EGL 连 llvmpipe 都不可用；GPU 内核侧（panfrost 时钟/电源）修好之前
-# 保持 Debian 原版 Mesa。要重建 G77 版时：MESA_INSTALL_G77=1 debian/scripts/04-build-mesa.sh
+# 保持 Debian 原版 Mesa。要重建 G77 版时：MESA_INSTALL_G77=1 ./scripts/04-build-mesa.sh
 if [ "${MESA_INSTALL_G77:-0}" != "1" ]; then
     log "跳过 G77 libgallium 替换（MESA_INSTALL_G77=0），保留 Debian 原版 Mesa（llvmpipe）"
     exit 0
