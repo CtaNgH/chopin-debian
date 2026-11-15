@@ -1,0 +1,18 @@
+[Unit]
+Description=Point Xorg at the MediaTek display DRM card (chopin)
+Documentation=file:/usr/local/sbin/chopin-xorg-kmsdev.sh
+# The display controller probes late (component deferral, ~16 s) and Xorg must
+# not run on the render-only GPU node, so make sure the snippet exists before
+# the display manager starts.
+Before=gdm.service display-manager.service
+After=systemd-udevd.service
+ConditionPathExists=/dev/dri
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/chopin-xorg-kmsdev.sh --wait 40
+TimeoutStartSec=60
+
+[Install]
+WantedBy=graphical.target

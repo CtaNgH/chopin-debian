@@ -1,7 +1,7 @@
 # chopin Debian 13 + GNOME 实施方案（v2，适配三仓库布局）
 
 > 设备：Redmi Note 10 Pro 5G / POCO X3 GT（chopin，M2104K10AC，MT6891Z/CZA，Dimensity 1100）
-> 内核：Linux 7.3.4 + 20 个补丁（见 [chopin-kernel](../../kernel)）
+> 内核：Linux 7.3.4 + 25 个补丁（见 [chopin-kernel](../../kernel)）
 > 目标：Debian 13.7 trixie + GNOME 48.7 + Mesa 25.0.7-2+deb13u1
 > 更新：2026-11-15
 
@@ -72,7 +72,7 @@ cmdline 由 `CONFIG_CMDLINE_FORCE` 强制。详见 [kernel/docs/kernel.md](../..
 
 | 目录 | 仓库 | 内容 |
 | --- | --- | --- |
-| `kernel/` | chopin-kernel | 20 个补丁、defconfig、build/bootimg 脚本、内核文档 |
+| `kernel/` | chopin-kernel | 25 个补丁、defconfig、build/bootimg 脚本、内核文档 |
 | `debian/` | chopin-debian | 本仓库：rootfs/桌面/initramfs/镜像 |
 | 顶层 | chopin-linux | README、docs、Makefile、Windows 辅助脚本、submodule 锁 |
 

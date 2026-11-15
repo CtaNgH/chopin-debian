@@ -58,7 +58,8 @@ if [ -x "$ROOTFS/usr/bin/dconf" ]; then
     in_chroot dconf update
 fi
 
-for unit in gdm3 NetworkManager ssh chopin-gadget chopin-diag chopin-growroot; do
+for unit in gdm3 NetworkManager ssh chopin-gadget chopin-diag chopin-growroot \
+            chopin-nvt-firmware chopin-xorg-kmsdev; do
     enable_unit "$unit"
 done
 in_chroot systemctl enable serial-getty@ttyGS0.service || log "跳过 serial-getty@ttyGS0"

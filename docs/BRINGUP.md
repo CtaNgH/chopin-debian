@@ -1,13 +1,12 @@
-> **历史现场记录（2026-11-14 至 2026-11-15）**：路径已按三仓库布局更新，内容保留原样。
-> 当前计划见 [PLAN.md](PLAN.md)，构建见 [../README.md](../README.md)。
-
 # chopin Debian 13 实机 bring-up 记录
 
 > 时间：2026-11-14 23:30
 > 设备：Redmi Note 10 Pro 5G / POCO X3 GT（chopin，MT6891Z/CZA）
-> 镜像基线：Linux 7.3.4 + 20 补丁；Debian 13.7 + GNOME 48.7 + Mesa 25.0.7
-> 本文是给下一个对话/下一次接手的**现场状态**，方案见 [debian.md](debian.md)，
-> 构建见 [../README.md](../README.md)。
+> 说明：本文是从开发工作区原样搬运的现场记录，`<workdir>` 代表当时的私有工作目录，
+> 里面的绝对路径只作参考；公开仓库的目录布局见 [../README.md](../README.md)。
+> 镜像基线：Linux 7.3.4 + 18 补丁；Debian 13.7 + GNOME 48.7 + Mesa 25.0.7
+> 本文是给下一个对话/下一次接手的**现场状态**，方案见 [docs-debian.md](../docs-debian.md)，
+> 构建见 [README.md](README.md)。
 
 ## 0. 一句话状态
 
@@ -34,7 +33,7 @@ gdm3 已暂时 mask，屏幕日志安静；**USB 串口仍未在正常启动里�
 | `debian/out/boot-chopin-debian.img` | 19 MB | `af4e264976b81c7c6e9008065b5eff0c941747a5677eb701338e4798b95c684d` |
 | `debian/out/chopin-rootfs.sparse.img` | 2.9 GB | `6c3be5639b55b74554f8e7c8c5b09e13f8af4369c449133fb350fe39d77efe50` |
 
-Windows 副本在 `D:\chopin-linux\out\`，文件名相同。
+Windows 副本在 `<workdir>\out`，文件名相同。
 它们包含的最后一个修复：`chopin-gadget.sh` 在 `$G/UDC` 非空时**直接退出**，
 不再执行 `rm -rf g1`，避免 systemd 的 `chopin-gadget.service` 把 initramfs
 刚绑好的 gadget 拆掉。
@@ -99,13 +98,13 @@ initramfs 已绑定的 config/function 删掉，USB 链路随之消失。修复�
 
 手机关机（长按电源 10 s），按住音量下 + 电源进 fastboot，然后 Windows：
 
-    cd D:\chopin-linux
+    cd <workdir>
     .\scripts\flash-debian.ps1
 
 等价手动：
 
-    & "D:\Program Files (x86)\platform-tools\fastboot.exe" flash boot D:\chopin-linux\out\boot-chopin-debian.img
-    & "D:\Program Files (x86)\platform-tools\fastboot.exe" flash userdata D:\chopin-linux\out\chopin-rootfs.sparse.img
+    & "D:\Program Files (x86)\platform-tools\fastboot.exe" flash boot <workdir>\out\boot-chopin-debian.img
+    & "D:\Program Files (x86)\platform-tools\fastboot.exe" flash userdata <workdir>\out\chopin-rootfs.sparse.img
     & "D:\Program Files (x86)\platform-tools\fastboot.exe" reboot
 
 注意：userdata 是 2.9 GB sparse，分 12 个 chunk，约 90 s；32 位 fastboot 可用。
@@ -115,7 +114,7 @@ initramfs 已绑定的 config/function 删掉，USB 链路随之消失。修复�
 
 Windows 出现 COM11 后：
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File D:\chopin-linux\scripts\serial-cmd.ps1 -Send "id" -WaitMs 2000
+    powershell -NoProfile -ExecutionPolicy Bypass -File <workdir>\scripts\serial-cmd.ps1 -Send "id" -WaitMs 2000
 
 登录：`root` / 密码 `chopin`（用户 `chopin` 同密码）。
 如果串口没有出现，但主机至少出现 `VID_1D6B&PID_0104`，说明 gadget 绑定成功、只是
@@ -123,9 +122,9 @@ getty/驱动问题；如果连 USB 设备都没有，进入 5.3。
 
 ### 5.3 没有 USB 时用 debug3
 
-`boot-chopin-debug3.img`（D:\chopin-linux\out）是已知能枚举 COM11 的镜像：
+`boot-chopin-debug3.img`（<workdir>\out）是已知能枚举 COM11 的镜像：
 
-    fastboot flash boot D:\chopin-linux\out\boot-chopin-debug3.img
+    fastboot flash boot <workdir>\out\boot-chopin-debug3.img
     fastboot reboot
 
 它只建 gadget、不起 Debian；串口 shell 用 **CR**（`serial-cmd.ps1` 已改为发 [char]13）。
@@ -149,13 +148,13 @@ debug3 没有 systemd，所以不能用来跑桌面；它只是救援/诊断通�
 
 ## 6. 关键路径与文件
 
-- 内核：`/root/chopin-linux/linux`，release `7.3.4-ga9777a8559e0-dirty`
-- 内核产物：`/root/chopin-linux/out/modules/lib/modules/<release>`
+- 内核：`<workdir>/linux`，release `7.3.4-ga9777a8559e0-dirty`
+- 内核产物：`<workdir>/out/modules/lib/modules/<release>`
 - 正常镜像：`debian/out/boot-chopin-debian.img`、`chopin-rootfs.sparse.img`
 - 诊断镜像：`boot-chopin-debug*.img`、`boot-chopin-rescue*.img`（同一目录）
 - initramfs 源：`debian/initramfs/`（`init`、`chopin-gadget.sh`、debug/rescue 变体）
-- 串口工具：`D:\chopin-linux\scripts\serial-cmd.ps1`（CR 回车、115200 8N1、DTR/RTS）
-- 刷机脚本：`D:\chopin-linux\scripts\flash-debian.ps1`
+- 串口工具：`<workdir>\scripts\serial-cmd.ps1`（CR 回车、115200 8N1、DTR/RTS）
+- 刷机脚本：`<workdir>\scripts\flash-debian.ps1`
 
 ## 7. Git
 
@@ -221,3 +220,484 @@ debug3 没有 systemd，所以不能用来跑桌面；它只是救援/诊断通�
 - boot：`boot-chopin-debian.img`（9a46cef3…）+ 旧 userdata（已含同等现场修改，运行正常）。
 - 串口 COM11 @115200：`root`/`chopin`，密码 `chopin`。
 - 下一步：触摸与 panfrost（见 [PLAN.md](PLAN.md)）。
+
+---
+
+## 9. 2026-11-15 02:00–02:50：触摸打通 + 稳定性问题（本轮）
+
+### 9.1 触摸：根因是缺 NVT host-download 固件（已解决）
+
+**现象回顾**：驱动 probe 成功（chip id 可读、input 设备注册、`request irq 33 succeed`），
+但 `/proc/interrupts` 里 IRQ 33 计数恒 0，evtest 无任何事件；当时怀疑触发类型/极性/pinctrl。
+
+**本轮定位**：
+- 冷启动 dmesg 里驱动在 probe 后 ~10 s 请求固件：
+  `Direct firmware load for novatek_nt36672c_k10a_fw01.bin failed with error -2`
+  → `nvt_get_fw_info: FW info is broken! fw_ver=0xD5, ~fw_ver=0xF6`（芯片还在 bootloader 状态）
+  → `FW type is 0x19, fw_ver=0`，PID=0x03A3；驱动继续完成 probe，但芯片不扫描、INT 不触发。
+- NT36672C 是 **host-download** 型：芯片没有内部固件存储，原厂内核每次启动都会把
+  `novatek_nt36672c_k10a_fw01.bin`（139264 B）经 SPI 下载进去；mainline 的 linux-firmware
+  没有这个文件，因此出现上述现象。
+- 固件就在设备原厂 **vendor 逻辑分区**里：`/vendor/firmware/novatek_nt36672c_k10a_fw01.bin`、
+  `_fw02`、`_mp01`、`_mp02`。物理位置在 `/dev/sdc61`（PARTLABEL=super，8.5 GB）的
+  vendor 逻辑分区（liblp，slot 0），只读挂载即可复制，不需要动 userdata 或刷机。
+
+**验证步骤（实机）**：
+```
+python3 /root/lp.py map /dev/sdc61 vendor          # 6457131008 2007650304
+losetup -f --show -r --offset 6457131008 --sizelimit 2007650304 /dev/sdc61
+mount -t ext4 -o ro /dev/loop0 /mnt/vendor
+cp /mnt/vendor/firmware/novatek_nt36672c_k10a_*.bin /lib/firmware/
+echo spi0.0 > /sys/bus/spi/drivers/NVT-ts-spi/unbind   # 已 probe 过的驱动需要重载
+echo spi0.0 > /sys/bus/spi/drivers/NVT-ts-spi/bind
+```
+重载后 dmesg：
+```
+nvt_update_firmware 1174: Update firmware success! <100126 us>
+nvt_get_fw_info 673: FW type is 0x01, fw_ver=11
+nvt_read_pid 599: PID=5950
+```
+IRQ 33 立刻开始计数（`grep ' 33:' /proc/interrupts` → mt-eint 19 Edge NVT-ts-spi），
+`evtest /dev/input/event2` 输出真实事件：
+```
+Event: type 3 (EV_ABS), code 57 (ABS_MT_TRACKING_ID), value 30
+Event: type 1 (EV_KEY), code 330 (BTN_TOUCH), value 1
+Event: type 3 (EV_ABS), code 53 (ABS_MT_POSITION_X), value 742
+Event: type 3 (EV_ABS), code 54 (ABS_MT_POSITION_Y), value 18
+```
+**冷启动复测**：重启后固件已持久化在 userdata 的 `/lib/firmware`，启动 22 s 时打印
+`Update firmware success!`，IRQ 33 正常，无需人工干预。
+
+**固化到工程**（本轮新增）：
+- `debian/overlay/usr/local/sbin/chopin-nvt-firmware.sh`：首启自动从 super/vendor 提取
+  固件（幂等；已 probe 时自动 unbind/rebind）；
+- `debian/overlay/usr/local/lib/chopin/lp.py`：最小 liblp 解析（list/map）；
+- `debian/overlay/etc/systemd/system/chopin-nvt-firmware.service`：oneshot，
+  `Before=graphical.target display-manager`；`02-configure-rootfs.sh` 负责 enable，
+  并可选打入 `debian/third_party/firmware/`（已 gitignore）里的预置固件。
+- 实机验证：删除 `/lib/firmware/novatek_*` 后执行服务脚本 → 4 个文件全部恢复、
+  驱动自动 reload、`Update firmware success!`、触摸保持可用。
+- 固件 sha256 见 `debian/README.md` §1.1。
+
+**遗留观察**：空闲时 IRQ 33 仍以约 2 次/秒触发（驱动打印 `finger leave`），不影响功能，
+但可在后续调 trigger type/pull-up 时再看。
+
+### 9.2 新问题：X11 桌面下偶发 SError panic（P0）
+
+- GNOME（X11 + llvmpipe）运行 1–3 分钟后随机 panic。ramoops 证据：
+  - 一次：`SError Interrupt on CPU6, code 0xbe000411`，进程 gnome-shell，
+    `pc: clear_page+0x34`（缺页清零新页）；
+  - 另一次：写 2 GB 文件时先出现 300+ 次
+    `ufshcd-mtk 11270000.ufshci: ufshcd_check_errors: saved_err 0x30004 saved_uic_err 0x2`
+    + host_regs dump，随后 `SError ... 0xbe000011`，进程 python3，
+    栈 `ext4_buffered_write_iter → __arch_copy_from_user`。
+- 说明是**内存/总线层面的外部 abort**，且与 UFS 写入、显示/SMI 活动相关；multi-user
+  空闲尚未复现。疑似方向：UFS DMA/IOMMU 配置（cmdline 有 `swiotlb=0 iommu.passthrough=1`）、
+  DT reserved-memory 与真实内存布局、display SMI 地址配置。
+- 现场已保存：`/root/chopin-crash/console-ramoops-latest.txt`（设备上）。
+- 临时处置：`systemctl stop gdm`、`systemctl set-default multi-user.target`、
+  journald `Storage=volatile`，设备在 multi-user 下观察稳定性，等待分析结论。
+
+### 9.3 当前设备状态（2026-11-15 02:50）
+
+- 运行内核不变：`7.3.4-ga9777a8559e0-dirty #10`；boot 仍为 `9a46cef3` 镜像；
+- rootfs 未重刷，现场改动：`/lib/firmware/novatek_*.bin`、`chopin-nvt-firmware` 服务与脚本、
+  multi-user/volatile 等（尚未全部回流到 `debian/build`）；
+- 触摸：**正常**（IRQ 33、evtest 有事件）；
+- GPU：panfrost 仍 probe -110；
+- 串口：COM11 @115200，root/chopin；`scripts/serial-run.ps1` 可自动登录并执行多行命令。
+
+---
+
+## 10. 2026-11-15 02:30–03:15：GPU 内核打通 + 刷机通道调查（本轮）
+
+### 10.1 GPU / panfrost：根因是 MFG MTCMOS 时钟驱动没编进内核（已修）
+
+分析结论（详见 [../analysis/gpu-panfrost.md](../analysis/gpu-panfrost.md)）：
+
+- mali 节点的 7 个 `mtcmos_mfg*` 时钟不是普通门控，而是 MT6893 的 MFG MTCMOS 电源域，
+  由项目自写的 `drivers/clk/mediatek/clk-mt6893-pg.c`
+  （`compatible = "mediatek,mt6893-scpsys-clk"`）提供；
+- 该驱动受 `CONFIG_COMMON_CLK_MT6893_PG` 控制，而 `chopin_defconfig` 从未打开它：
+  `.config` 里 `# CONFIG_COMMON_CLK_MT6893_PG is not set`，树里也没有 `clk-mt6893-pg.o`；
+- 因此 panfrost 的 chopin 钩子对每个 mtcmos 时钟都拿到 `-EPROBE_DEFER`（打印 `-517`），
+  吞掉错误后继续以 NULL 时钟初始化 → MFG 电源域一直关着 → GPU 寄存器读回 0
+  （`using only 1st core group (0 cores from 0)`）、软/硬复位超时 → probe -110。
+- 另一个独立问题：mfgcfg 门控的父时钟名写成了 mt8192 的 `mfg_pll_sel`，MT6893 是 `mfg_sel`，
+  所以 `bus_clock rate = 0`。
+
+**实机验证方法（不刷机）**：把 `clk-mt6893-pg` 临时编成模块（Kconfig bool→tristate 的临时改动，
+内核树最终仍保持 `=y`），用桩版本号对齐运行内核后 `insmod`，再重载 panfrost：
+
+```
+mt6893-scpsys-clk 10001000.scpsys: MTCMOS clocks: 7 real (MFG), 33 placeholders
+panfrost 13000000.mali: mali-g77 id 0x9080 major 0x0 minor 0x1 status 0x1
+panfrost 13000000.mali: shader_present=0x660067 l2_present=0x1
+panfrost 13000000.mali: [drm] Initialized panfrost 1.6.0 for 13000000.mali on minor 1
+```
+
+`/dev/dri/renderD128`、`card1` 随即出现。内核修复已提交：`eedb0f190`（defconfig +
+mfg 父时钟名 + panfrost 延迟探测）；新内核已打包为 `out/boot-chopin-final.img`
+（sha256 `5ac7ca44…`，含 LKDT 诊断的内存洞保留试验 `5775fb2ac`），**尚未刷入**（见 10.2）。
+
+**用户空间还没通**：`eglinfo -B` 在 GBM/Surfaceless/Device 平台仍报 llvmpipe；
+EGL device 平台枚举到 `/dev/dri/card1`（panfrost）但 `eglInitialize` 在 DRI2 加载阶段失败
+（`using driver panfrost for 3` → `failed to create dri2 screen`）。X11 的显示 KMS 是
+vendor `mediatek_v2`（无 Mesa 驱动），所以桌面加速是独立问题；panfrost 用户态需要
+GBM/surfaceless 或 render-node offload 路线。已写 `scripts/gpu-egl-test.py` 用于枚举
+EGL device 并打印 GL_RENDERER，继续排查时用。
+
+### 10.2 刷机通道：Linux 下 boot_a 被 UFS 硬件写保护
+
+尝试在 Debian 里直接 `dd` 写 `/dev/disk/by-partlabel/boot_a` 后读取校验失败，dmesg：
+
+```
+sd 0:0:0:2: [sdc] Sense Key : 0x7 [current]
+sd 0:0:0:2: [sdc] ASC=0x27 ASCQ=0x1
+critical target error, dev sdc, sector 1611776 op 0x1:(WRITE) ...
+Buffer I/O error on dev sdc32, logical block 30720, lost async page write
+```
+
+`ASC=0x27` 即 WRITE PROTECTED：UFS 设备固件拒绝写这些 LBA。逐分区安全写回测试结果：
+
+| 分区 | 可写 | 分区 | 可写 |
+| --- | --- | --- | --- |
+| boot_a / vendor_boot_a / dtbo_a | ❌ | boot_b | ✅ |
+| para / boot_para | ❌ | vbmeta_a | ✅ |
+| md1img_a | ❌ | super | ✅ |
+
+所以**新内核必须走 LK/fastboot**（音量下 + 电源进 fastboot）。好消息是大文件传输不再是瓶颈：
+`scripts/serial-xfer.ps1` 用 `stty raw` + `head -c N | base64 -d` 的管道，把 Windows 端
+base64 直接灌进 ttyGS0，实测 19 MB boot 镜像 ~1 s 完成（USB ACM 高速度，约 20 MB/s 缓冲），
+sha256 校验一致。
+
+### 10.3 SError 诊断内核（已构建，待刷入）
+
+按 [../analysis/ufs-serror.md](../analysis/ufs-serror.md) 的建议，本次内核额外带了两处试验：
+
+1. `setup.c`：在覆盖 LK 设备树之前 dump LK 的 `/memory` 与 `/reserved-memory`
+   （`CHOPIN-LKDT:` 行）——这是判断 reserved-memory 是否抄错的关键证据；
+2. 板级 DTS：把两个 `md_mem_usage` carve-out 之间的 237.25 MiB 空洞
+   （`0xebb10000..0xfa850000`）保留为 `no-map`，验证“伙伴系统发放了总线不响应的 DRAM”假设。
+
+刷入后：`dmesg | grep CHOPIN-LKDT`，再跑内存压力测试（见 ufs-serror.md §6），
+确认 SError/`0x30004` 是否消失。
+
+### 10.4 现场设备状态（2026-11-15 03:15）
+
+- 内核仍是 `7.3.4-ga9777a8559e0-dirty #10`（旧内核，尚未刷 10.3 的内核）；
+- GPU：通过临时模块 + `chopin-gpu.service` 在启动后加载，`renderD128` 可用；
+  已实测重启验证：boot 时 systemd-modules-load 先加载 PG 时钟模块（日志
+  `MTCMOS clocks: 7 real (MFG), 33 placeholders`），随后 chopin-gpu.service 重载 panfrost，
+  `mali-g77` 识别、`renderD128` 出现、无 failed units；
+  模块文件在 `/lib/modules/<rel>/kernel/drivers/clk/mediatek/clk-mt6893-pg.ko`
+  （vermagic 已手工对齐旧内核，刷入新内核后应删除并改用内置驱动）；
+- 桌面仍停在 multi-user（gdm 停止）；触摸正常；**但 SError 在 multi-user 下同样会触发**：
+  一次实机运行到 483 s 时仍 panic（ramoops: `SError Interrupt on CPU7, code 0xbe000411`，
+  距离上一次启动约 8 分钟），说明它不是桌面/显示专属，而是内存/总线问题——更没有理由拖延
+  P0 修复。设备 panic 后由 mtk 硬件看门狗（31 s）自动重启，可自恢复；
+- 未提交的现场改动：`/etc/modules-load.d/chopin.conf` 增加 `clk-mt6893-pg`、
+  `chopin-gpu.service`、journald volatile 等。
+
+### 10.5 产物与提交
+
+- 内核：`eedb0f190`（GPU 修复）、`5775fb2ac`（LKDT 诊断 + 内存洞试验）；
+- boot 镜像：`out/boot-chopin-final.img`（19 MB，sha256
+  `5ac7ca44d4d3955cce44685696254ad1e0c6e588beb50eea28a04b5951e57157`）；
+- 分析报告：`analysis/gpu-panfrost.md`、`analysis/ufs-serror.md`；
+- 工具：`scripts/serial-run.ps1`（串口登录/多行命令）、`scripts/serial-xfer.ps1`
+  （高速文件传输）、`scripts/gpu-egl-test.py`（EGL device 枚举）、`scripts/lp.py`。
+
+### 10.6 下一步
+
+1. 手机进 fastboot，刷 `out/boot-chopin-final.img`；
+2. 验证：启动 dmesg 无 `-517`、`renderD128` 出现、`CHOPIN-LKDT` 输出、触摸正常；
+3. 用 LKDT 真实布局修正 DTS reserved-memory，消除 SError（P0）；
+4. 再评估 Mesa/EGL panfrost 用户态（P1-c）与桌面稳定性。
+---
+
+## 11. 2026-11-15 03:00–03:35：P0 修复候选（reserved-memory 修正 + 触摸时序）
+
+### 11.1 LK 真实内存布局（CHOPIN-LKDT 实测）
+
+刷入带诊断的内核后，启动早期 dump 出 LK（bootloader）真正传给内核的设备树：
+
+```
+CHOPIN-LKDT: /memory reg: 00000000 40000000 00000001 80000000   -> 0x40000000 + 6 GiB
+```
+
+reserved-memory 的 mblock 表也全部打印出来。与板级 DTS 对比，发现 modem/adsp 相关的
+6 个 carve-out 与真实布局不一致（这一台是 6 GiB 版本，DTS 抄的是 8 GiB 版本的地址）：
+
+| 节点 | 板级 DTS 旧值 | LK 真实值 | 影响 |
+| --- | --- | --- | --- |
+| mblock-24-md_mem_usage | 0xe0000000 | 0xde000000 | 32 MiB 被误当空闲 RAM |
+| mblock-25-md_mem_usage | 0xe3000000 | 0xe1000000 | 32 MiB 被误当空闲 RAM |
+| mblock-26-md_mem_usage | 0xe4000000 | 0xe2000000 | 32 MiB 被误当空闲 RAM |
+| mblock-27-md_mem_usage | 0xfa850000 | 0xf8850000 | **32 MiB 被误当空闲 RAM** |
+| mblock-29-ap_md_c_smem  | 0x6e000000/0x5560000 | 0x70000000/0x3560000 | 浪费 32 MiB |
+| mblock-30-adsp | 0x6c000000 | 0x6e000000 | 浪费 14.5 MiB |
+| mblock-1/2-dramc-rk0/1 | 0x013ffff000 / 0x023ffff000 | 0xfffff000 / 0x1bffff000 | 8 GiB 版地址，超出本机 RAM |
+
+其中 mblock-27 的 32 MiB 窗口（0xf8850000..0xfa850000）**正好覆盖之前 SError 的
+swiotlb bounce pool 地址 0xf6850000..0xfa850000 的上半段**：LK 保留、Linux 却当空闲内存
+交给伙伴系统，首次访问就产生总线外部 abort（补丁 `14266aef5`）。
+
+### 11.2 触摸时序问题（新内核上暴露）
+
+把 LKDT 诊断内核刷入后发现：触摸驱动在 ~1.6 s 就 probe，而 mi-dsi panel 还没起来，
+`get_lockdown_info_for_nvt()` 失败；旧代码把失败也标记为“已读取”，10 s 后
+`nvt_match_fw()` 看到全 0 的 lockdown，报 “mismatch panel type, use default fw”，
+请求通用的 `novatek_ts_fw02.bin`（不存在）→ 固件下载失败、IRQ 33 恒 0、触摸失效。
+
+修复（`cbef89868`）：`get_lockdown_info()` 每 500 ms 重试读 panel lockdown，最多 20 s，
+读到有效值再锁定。实测启动 16 s 时 `match panle type, fw is [novatek_nt36672c_k10a_fw01.bin]`
+→ `Update firmware success!` → IRQ 33 正常计数，**无需任何手工 rebind**。
+
+### 11.3 刷入与验证（2026-11-15 03:20）
+
+- 镜像：`out/boot-chopin-p0.img`（19 MB，sha256
+  `2ec82ea0b21fa5abd6abc387f1e5a591ee261c6755e905f1298aa0bc88600a5b`），内核 release
+  `7.3.4-g5775fb2ac0a1-dirty`（#13）；
+- 模块：`out/p0-modules.tar.gz`（91 MB → 1640 个 .ko，已解压到
+  `/usr/lib/modules/7.3.4-g5775fb2ac0a1-dirty`）；
+- 启动验证：MTCMOS 时钟 0.69 s 注册、panfrost 2.79 s 完成 probe（`bus_clock rate =
+  349999848`，之前是 0）、`renderD128` 出现；触摸 16 s 刷固件成功；
+- 内存压力：分配/触碰/释放 2.5 GiB，无 SError、无 `ufshcd_check_errors`；
+- 桌面：gdm + gnome-shell 启动，运行 5 分钟+ 无 panic（旧内核 1–3 分钟必崩）；
+  继续长稳观察。
+
+### 11.4 教训：不要用带目录条的 tar 解到 /
+
+把 `p0-modules.tar.gz` 解到 `/` 时，归档里的 `lib/` 目录条目把 Debian 的
+`/lib -> usr/lib` symlink 替换成了真实目录（usrmerge 被破坏），所有动态链接程序报
+`required file not found`。串口 shell 本身已在内存中所以仍可操作，用
+`/usr/lib/ld-linux-aarch64.so.1 /usr/bin/mv ...` 显式指定 loader 才把 `/lib/modules` 移回
+`/usr/lib/modules` 并重建 symlink。
+
+**以后解压模块 tarball 必须加 `--keep-directory-symlink`**（GNU tar）或者只打包
+`usr/lib/modules/...` 子路径。
+---
+
+## 12. 2026-11-15 03:30–04:00：GPU 用户态打通（Mali-G77 + kmsro + glamor）
+
+**结论：用户态 GPU 通了——glamor、GLX、EGL 全部走 panfrost**，`glxinfo` 报
+`Mali-G77 (Panfrost)` / `Accelerated: yes`，`glxgears` 122 FPS（120 Hz 垂直同步）。
+
+> ⚠️ 但 X11 这条路上 **mutter 不刷新**（见 §12.6）：X 服务器自己会画（glamor 正常），
+> GLX 客户端也能渲染，可 gnome-shell 停在启动画面（静态帧、0% CPU、D-Bus 不回话）。
+> **真正能用的桌面是 Wayland**：`WaylandEnable=true` 后 gnome-shell 以 wayland 合成器运行，
+> 1080×2400@120、缩放 2.5，画面正常、触摸可用。
+
+### 12.1 之前为什么只有 llvmpipe
+
+三件事同时缺：
+
+1. **Mesa 没有 G77 型号**。`src/panfrost/lib/pan_props.c` 的型号表里没有 product id
+   `0x9080`（MT6893 的 Mali-G77），`panfrost_get_model()` 返回 NULL，DRI 驱动直接放弃。
+   参考仓库 <https://github.com/MT6891-Mainline/mesa> 的 `panfrost: add the Mali-G77`
+   提交补了一行 `MODEL(0x9080, 0, "G77", "TTRx", HAS_ANISO, 16384, {})`；Debian 的
+   Mesa 25.0.7 没有这个补丁。
+2. **内核侧没通**。panfrost probe 要 MFG MTCMOS 时钟（§10），旧内核 probe -110、没有
+   `renderD128`；修好之后用户态才有东西可跑。
+3. **X 跑错了设备**。KMS 是 `mediatek-drm`（card1），GPU 是 render-only（card0 /
+   renderD128）。Xorg 自动配置找不到 primary，回退 fbdev，直接
+   `Cannot run in framebuffer mode`。Mesa 的 kmsro 本来就能把「mediatek-drm 显示 +
+   panfrost 渲染」配成一对（`pipe_loader_get_compatible_render_capable_device_fds()`
+   在 platform bus 上找 panfrost 渲染节点），前提是 X 以**显示卡**为 KMS 设备启动。
+
+### 12.2 实际步骤
+
+1. `debian/scripts/04-build-mesa.sh`（现在默认 `MESA_INSTALL_G77=1`）交叉编译
+   `libgallium-25.0.7-2+deb13u1.so`，装进 `/usr/lib/aarch64-linux-gnu/`（先备份
+   `.debian`）。产物 sha256 `8aa303b618dee5c1abc33f719265f2314bc1df7bec2f776be2afd34ae64597f5`，
+   17.5 MB，**只含 panfrost**（`-Dllvm=disabled`，没有 llvmpipe）。
+2. `/etc/X11/xorg.conf.d/10-chopin-gpu.conf`：`Driver "modesetting"` +
+   `Option "kmsdev" "/dev/dri/card1"`。
+3. `systemctl restart gdm` → `Xorg.0.log` 出现
+   `glamor X acceleration enabled on Mali-G77 (Panfrost)`，gnome-shell 正常。
+
+### 12.3 三个坑（都已固化进镜像）
+
+- **kmsdev 必须是真实路径**。写 `/dev/dri/by-path/platform-mediatek-drm.7.auto-card`
+  时 Xorg 认不出这是它枚举过的设备：既建 `modeset(0)`（用该路径）又建 `modeset(G0)`
+  （card1），主屏仍是 fbdev，报 `Cannot run in framebuffer mode`。必须 `readlink -f`
+  成 `/dev/dri/cardN`。
+- **配置文件必须是 644**。X 以用户 chopin 启动，`/etc/X11/xorg.conf.d/*.conf` 若是 600
+  会被忽略，表现和上面一样（又回到 fbdev）。生成脚本用 `mktemp` 时踩过这个坑。
+- **卡号不固定**。panfrost 2.8 s 就 probe，mediatek-drm 要等组件、defer 到 ~16 s，
+  `card1` 只是当前顺序。新增 `chopin-xorg-kmsdev.service`（`Before=gdm.service`，
+  `--wait 40`）在启动时按 by-path 解析真实卡号并重写配置；脚本幂等，内容没变不写盘。
+
+### 12.4 证据
+
+| 检查 | 结果 |
+| --- | --- |
+| `eglinfo -B` | GBM / Surfaceless / Device / **X11** 四个 platform 全是 `Mali-G77 (Panfrost)` |
+| `glxinfo -B` | direct rendering **yes**，Accelerated **yes**，GL 3.1 / GLES 3.1 |
+| `glxgears` | 614 frames / 5.0 s = **122.7 FPS**（vsync 120 Hz） |
+| Xorg | `glamor X acceleration enabled on Mali-G77 (Panfrost)` |
+| 桌面 | gdm + Xorg + gnome-shell 48.7 正常，截图见 `out/shot.png` |
+
+Xorg 启动时有一次 `(EE) modeset(0): Failed to make import prime FD as pixmap: 22`
+（kmsro 扫描输出路径上的 prime 导入探测），没有复现、不影响渲染，先记着。
+
+### 12.5 仍未解决 / 注意
+
+- 这份 libgallium **没有 swrast/llvmpipe**，没有软件渲染兜底：panfrost 起不来桌面就是黑的。
+  要兜底就 `MESA_INSTALL_G77=0`（回到 Debian 原版，llvmpipe）或另编 `panfrost+softpipe`。
+- **P0（SError）没有随 GPU 一起解决**：GPU 桌面跑了约 30 分钟后设备重启过一次；
+  pstore 因满（`pstore: backend (ramoops) writing error (-28)`）没留下新记录，已
+  `rm /sys/fs/pstore/*` 清空待取证。下次重启后第一件事是看 pstore 里是不是同一个
+  `SError ... code 0xbe000411`。
+- 厂商显示驱动偶发 `[DISP][E]mtk_plane_atomic_disable, empty crtc state`，暂无可见副作用。
+
+### 12.6 X11 不刷新，Wayland 正常（2026-11-15 04:20）
+
+X11 会话（modesetting + glamor + kmsro）能创建上下文、glxgears 122 FPS，但：
+
+- 屏幕停在 gnome-shell 的启动画面（模糊壁纸 + 转圈），之后**不再更新**；
+- 之后起的客户端窗口不会出现在屏幕上（后台跑 glxgears，截屏前后字节完全相同）；
+- gnome-shell 的 CPU 时间冻结（0%，只有 4.9 s），`org.gnome.ScreenSaver.GetActive`
+  无人应答 → 主循环卡在 present/fence 上；
+- Xorg 侧是 `(II) AIGLX: Loaded and initialized mediatek`、`GLX: Initialized DRI2 GL provider`：
+  GLX 走的是 **DRI2**（服务器端 DRI 名 "mediatek"，靠 libgallium 静态表兜底到 kmsro），
+  Mesa 25 对 DRI2 客户端路径早已不维护，mutter 等 swap 完成事件大概率永远等不到。
+
+把 `/etc/gdm3/daemon.conf` 改成 `WaylandEnable=true` 之后：gnome-shell 以 wayland 合成器
+运行（`loginctl show-session <id> -p Type` → `wayland`），EGL/GBM 直接开在显示卡 card1 上、
+由 kmsro 配到 panfrost，**桌面正常显示**（实机确认），1080×2400@120、缩放 2.5。
+
+结论：**桌面走 Wayland**。X11 那套（`10-chopin-gpu.conf` + `chopin-xorg-kmsdev.service`）
+留着当 fallback 和调试手段，但不要指望 mutter on X11 出画面。
+
+### 12.7 遗留
+
+- **触摸能用但坐标有偏差**（实机反馈"位置有点错误"）。驱动上报
+  `ABS_MT_POSITION_X 0..1079`、`ABS_MT_POSITION_Y 0..2399`，和面板一致；
+  偏差要么在合成器映射（scale 2.5），要么是面板有效区/固件坐标系有偏移，待量化。
+- 截图工具：rootfs 里没有 xwd/imagemagick，用 `scripts/chopin-shot.py`（ctypes + XGetImage）
+  或者 Wayland 下让用户目视确认；`scripts/serial-pull.ps1` 可以把文件从设备拉回 Windows
+  （base64 over COM，20 KB 级文件约 3 s）。
+
+---
+
+## 13. 2026-11-15 04:00–05:00：触摸 Y 翻转的来历 + P0 第二个候选修复（构建完成，待刷入）
+
+### 13.1 触摸：那个「右半屏 Y 翻转」是移植时加的，原厂没有
+
+驱动里有这么一段（`nt36xxx.c`，移植补丁 0008 带进来的）：
+
+```c
+/* This panel reports the right half with the opposite
+ * Y direction; only flip that half. */
+if (nvt_invert_y && input_x >= (ts->abs_x_max / 2))
+        input_y = ts->abs_y_max - input_y;
+```
+
+`nvt_invert_y` 来自 DTS 属性 `novatek,invert-y`（`mt6893-xiaomi-chopin.dts:3499`）。
+
+对照原厂内核（`Xiaomi_Kernel_OpenSource-chopin-r-oss.zip`）：
+
+- `drivers/input/touchscreen/NVT36672c/nt36xxx.c` —— **没有任何 invert / 镜像逻辑**，
+  `input_y` 的算法和移植版逐字相同；
+- `arch/arm64/boot/dts/mediatek/novatek-nt36xxx-spi.dtsi` —— **没有** `novatek,invert-y`
+  之类的方向属性。
+
+所以这是移植时凭现象加的猜测，效果是：**x ≥ 540 的所有触摸 Y 被镜像**。用实机四点触摸
+（evtest 记录）验证，上报顺序与「用户按 左上→右上→右下→左下 点，但右半边 Y 被翻」完全吻合
+（左上 85,86；右上被报成 1000,2337；右下被报成 1000,75；左下 123,2297）。
+
+修复：删掉 DTS 属性 + 删掉驱动里的翻转代码（内核 commit `676614a32`）。
+
+### 13.2 P0：mblock-26/mblock-27 之间 237.25 MiB 的空档
+
+LK 真实布局里 `mblock-26`（`0xe2000000` + `0x7b10000`）结束于 `0xe9b10000`，
+`mblock-27` 从 `0xf8850000` 开始，**两者之间 237.25 MiB（`0xe9b10000..0xf8850000`）
+不在 LK 的 mblock 表里**，Linux 于是把它交给伙伴系统；首次触碰就在 `clear_page` 里
+异步外部中止（`SError code 0xbe000411`）。
+
+上一轮试过在同一位置（8 GiB 版本地址换算后）打 237 MiB 的 `no-map` 洞，短时间没崩；
+这一轮正式把它作为 `chopin-md-usage-gap` 保留（`no-map`，`reg = <0 0xe9b10000 0 0xed40000>`）。
+代价是可用内存少 237 MiB。
+
+### 13.3 内核 release 钉住
+
+设备上已装好 `7.3.4-g5775fb2ac0a1-dirty` 的模块，而源码树 HEAD 已经走到 `676614a32`。
+直接重编会让 release 变成 `7.3.4-g676614a32...`，模块目录对不上（panfrost 等就加载不了）。
+所以 `scripts/setlocalversion` 加了一个钩子：
+
+```sh
+if test -n "$CHOPIN_LOCALVERSION"; then echo "$CHOPIN_LOCALVERSION"; exit 0; fi
+```
+
+构建时带 `CHOPIN_LOCALVERSION='-g5775fb2ac0a1-dirty'`，这样**只换 boot 镜像里的
+Image.gz + dtb，不用动模块**（本次只碰触摸驱动和 DTS，模块 ABI 没变）。
+
+### 13.4 产物（待刷入）
+
+| 项 | 值 |
+| --- | --- |
+| 镜像 | <workdir>\out\boot-chopin-touch-gap.img（19.5 MB，含触摸修复 + gap） |
+| sha256 | `e6a3165f269a0865d41036b45fe0d2c2d114064ccfc87822e909b169a8bd915d` |
+| 内含 | `chopin-md-usage-gap` 节点 ✅、`novatek,invert-y` 已删除 ✅（`zcat Image.gz | strings` 验证） |
+| 回滚 | `out/boot-chopin-p0.img` |
+
+刷入方式：关机后音量减 + 电源进 fastboot，`fastboot flash boot boot-chopin-touch.img`。
+
+### 13.5 长稳观察（2026-11-15 05:10–07:10）：3.5 小时无 SError
+
+Wayland + panfrost 桌面连续跑了 **3 小时 32 分**没有 SError：
+
+- 其中 40 分钟是 dd 读写（96 MB 循环，fsync）+ 160 MB bytearray 反复分配 + glxgears 循环；
+- 之后 2 小时完全空闲；
+- `dmesg` 里 `SError` / `ufshcd_check_errors` 计数都是 0，内核日志从 327 s 起就没有任何输出；
+- 负载期间 `free` 稳定，gnome-shell（pid 664）一直活着。
+
+结论/影响：
+
+- SError **不是纯 IO/内存压力能触发的**；
+- 之前的两次重启（约 03:56、04:10）都落在「X11 会话还开着、反复 restart gdm、同时在批量走串口
+  传文件」这段窗口里，嫌疑更偏向 X11/合成器反复初始化或 ttyGS0 大批量传输，而不是日常 Wayland 桌面；
+- 所以 **P0 的严重性要重新评估**：先刷「只修触摸」的镜像，用交互式桌面跑几小时看会不会崩，
+  再决定要不要付出 237 MiB 去保留那块 gap。
+
+两个镜像：
+
+| 镜像 | 内容 | sha256 |
+| --- | --- | --- |
+| `out/boot-chopin-touch.img` | **只修触摸**（建议先刷这个） | `7593c77245f75dd3a1204260162e7794470eff3bc3d99299d389e673a67e2b98` |
+| `out/boot-chopin-touch-gap.img` | 触摸修复 + md gap 保留（P0 实验） | `e6a3165f269a0865d41036b45fe0d2c2d114064ccfc87822e909b169a8bd915d` |
+
+两个镜像的 release 都是 `7.3.4-g5775fb2ac0a1-dirty`，都能直接配设备上现有的模块。
+
+### 13.6 刷入与验证（2026-11-15 13:10）
+
+这次刷机踩了两个坑，都记在这里免得再犯：
+
+1. **boot 镜像的 dtb 段必须沿用原厂 blob（201,848 字节）**。第一次打包时传了
+   `--dtb mt6893-xiaomi-chopin.dtb`（编译产物 280,640 字节），刷入后 LK 阶段就反复重启；
+   不传 `--dtb`、沿用模板段后正常启动。**运行时设备树用的是内核里内嵌的
+   `chopin-board.dtb`，和 boot 镜像的 dtb 段无关**，所以打包时不要动它。
+2. **release 字符串钉错了**。`scripts/setlocalversion` 的钩子最初只输出
+   `-g5775fb2ac0a1-dirty`，丢掉了 `7.3.4` 前缀（这个内核的 Makefile 直接拿脚本输出当整个
+   release）。结果 `uname -r` 对不上，panfrost 等模块 vermagic 不匹配全部不加载、桌面起不来。
+   改成 `echo "${KERNELVERSION}$CHOPIN_LOCALVERSION"` 后正常。
+
+刷入后的实机状态：
+
+| 检查 | 结果 |
+| --- | --- |
+| `uname -r` | `7.3.4-g5775fb2ac0a1-dirty` ✅ |
+| 模块 | panfrost / gpu_sched / drm_shmem_helper 已加载，`renderD128` 在 |
+| 会话 | `loginctl` → `Type=wayland`，gnome-shell 正常 |
+| 设备树 | `novatek,invert-y` 不存在；`chopin-md-usage-gap` 不存在（这版只修触摸） |
+| `dmesg` | `SError` / `ufshcd_check_errors` 计数 0 |
+
+**触摸验证**：让用户在屏幕上按 3 列 × 8 行的网格点了一遍，evtest 记录的上报坐标：
+
+- 三列 x ≈ {70–110, 480–570, 990–1050}，八行 y 从 ~1830 递减到 ~40，**每列都单调**；
+- 右列 y 序列 1837→1600→1386→1074→772→551→340→231→39，**没有出现镜像跳变**；
+- 也就是「右半边 Y 反向」的问题已经消失，剩下的偏差只剩手指落点本身的误差量级。
+
+镜像结论：移植时加的 `novatek,invert-y` / 右半屏翻转确实是错的，删掉后触摸映射恢复正常。

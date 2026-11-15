@@ -11,9 +11,11 @@ rootfs/镜像/Mesa 源码树等大文件全部在 `.gitignore` 里，可随时�
 | --- | --- |
 | rootfs | Debian 13.7 arm64，GNOME 48.7 + gdm3，1067 包（2026-11-15 验证） |
 | 内核模块 / initramfs | 可用；release 从内核工作树动态读取 |
-| Mesa | 默认使用 Debian 原版（llvmpipe）；G77 版交叉编译可选（`MESA_INSTALL_G77=1`） |
+| Mesa | 默认交叉编译 **Mali-G77 (panfrost)** 版 libgallium；`MESA_INSTALL_G77=0` 回退 Debian 原版（llvmpipe） |
+| 桌面 | GNOME 48.7 走 **Wayland**（mutter + EGL/GBM + kmsro + panfrost）；X11 下 mutter 不出帧 |
+| 触摸 | NVT36672C 固件自愈服务 + 驱动时序修复；Y 轴镜像问题已修复并在实机验证 |
 | 镜像 | ext4 + Android sparse + `boot-chopin-debian.img` |
-| 实机 | Debian 13.7 + X11 GNOME 已运行；触摸与 GPU 待修 |
+| 实机 | Debian 13.7 + GNOME 48.7（Wayland，1080×2400@120，缩放 2.5），触摸与串口控制台正常 |
 | 许可 | MIT（脚本/overlay）；Debian 软件包保留各自许可 |
 
 > 构建手册是本文；当前状态与阻塞见 [docs/PLAN.md](docs/PLAN.md)；

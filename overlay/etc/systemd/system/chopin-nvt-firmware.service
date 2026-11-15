@@ -1,0 +1,17 @@
+[Unit]
+Description=chopin: install Novatek touch firmware from the stock vendor partition
+Documentation=file:///usr/local/lib/chopin/lp.py
+# Rootfs (userdata) is already mounted when systemd runs; the NVT driver asks
+# for its firmware ~10 s after its built-in probe, so run as early as possible.
+After=local-fs.target
+Before=graphical.target display-manager.service gdm.service gdm3.service
+ConditionPathExists=!/lib/firmware/novatek_nt36672c_k10a_fw01.bin
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/chopin-nvt-firmware.sh
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
