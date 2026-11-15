@@ -701,3 +701,283 @@ Wayland + panfrost 桌面连续跑了 **3 小时 32 分**没有 SError：
 - 也就是「右半边 Y 反向」的问题已经消失，剩下的偏差只剩手指落点本身的误差量级。
 
 镜像结论：移植时加的 `novatek,invert-y` / 右半屏翻转确实是错的，删掉后触摸映射恢复正常。
+## 14. 2026-11-15 13:40–14:10：USB 网络打通（CDC-NCM + SSH）
+
+### 14.1 结论（已实机验证）
+
+- 手机现在通过 USB 口提供一张 **CDC-NCM** 网卡：
+  - 设备端：`usb0 = 192.168.42.2/24`，dnsmasq 发 192.168.42.100–110；
+  - Windows 侧：自动枚举成 **UsbNcm Host Device**（“以太网 2”），DHCP 拿到 `192.168.42.106`；
+  - `ping 192.168.42.2`、`ssh root@192.168.42.2` 都通。
+- **SSH 免密可用**：私钥在 `out/chopin_key`，公钥已写入设备 `/root/.ssh/authorized_keys`。
+- **重启后自动生效**：initramfs 先建 ACM-only gadget；systemd 的 `chopin-gadget.service` 发现
+  `/etc/chopin-gadget-rndis` 存在、而当前 gadget 没有网络功能，就 unbind → 重建 acm+ncm → 重新 bind。
+  本轮重启后实测：4.0 s 完成重建，usb0 / DHCP / SSH 全部正常。
+
+### 14.2 为什么用 NCM 而不是 RNDIS
+
+- RNDIS 功能本身能起来（Windows 也把它识别成 `RNDIS` 设备），但**这台 Windows 11（build 26300）没有绑定驱动**：
+  `USB\VID_1D6B&PID_0104&MI_02` = Problem 28；系统里没有 `rndismpx.sys`，`netrndis.inf` 只匹配
+  `ms_rndisusb`（需要 MS OS 描述符），Linux gadget 默认不带。
+- Windows 11 自带 CDC-NCM 驱动：`usbncm.inf` 匹配 `USB\Class_02&SubClass_0d&Prot_00`，正好是 Linux
+  `f_ncm` 控制接口的类/子类/协议。换成 `ncm.usb0` 后 Windows 立刻加载 `UsbNcm Host Device`，
+  不需要 INF、不需要 OS 描述符。
+
+### 14.3 两个坑（都踩过）
+
+1. **configfs 不能用 `rm -rf` 拆 gadget**。属性文件不能 unlink，`rm -rf $G` 会留下 function 目录；
+   下次 bind 时旧的 rndis 还占着 u_ether，NCM 只能拿到 usb1（usb0 一直是 down）。
+   正确顺序：unbind → 删 `configs/c.1` 里的软链 → `rmdir` 各 function → `rmdir` strings/configs/functions
+   → `rmdir` gadget。第一次用错误拆法把 USB 彻底搞没了（手机还在跑、桌面正常，但 USB 上什么都没有），
+   只能断电重启恢复。
+2. **串口密码提示符是 `????????? `，不是 `Password: `**。设备 locale 是中文，
+   `login` 的 “Password: ” 被渲染成 9 个问号。`serial-run.ps1` / `serial-xfer.ps1` 原来只匹配
+   `Password:`，于是永远卡在登录（表现为 “Login incorrect” / 超时）。已改成同时匹配 `\?{4,}`。
+
+### 14.4 用法
+
+```powershell
+# 串口（COM11，root/chopin）
+powershell -File D:\MT6891-Mainline\scripts\serial-run.ps1 -Cmd "uname -r"
+
+# SSH（免密，走 USB 网络）
+ssh -i D:\MT6891-Mainline\out\chopin_key root@192.168.42.2 "uptime"
+
+# scp
+scp -i D:\MT6891-Mainline\out\chopin_key 文件 root@192.168.42.2:/root/
+```
+
+### 14.5 还没做
+
+- Windows 侧给这张网卡开 **ICS**（需要管理员）手机才能上外网；当前只有 host↔device，
+  没有外网时 apt 仍然只能离线装包。
+- gadget 脚本里 usb0 的地址/网段仍是写死的 `192.168.42.0/24`（沿用 RNDIS 方案）。
+- `/etc/chopin-gadget-rndis` 这个名字已经不准了（脚本同时认 `chopin-gadget-net`），先留着兼容。
+
+---
+
+## 15. 2026-11-15 14:10–14:40：WiFi 驱动打通（WLAN-GEN4 + NVRAM + SoC 固件）
+
+### 15.1 现象
+
+驱动是 built-in 的，启动日志有 `Start to do wlan module init 0x6893`、`WLAN-GEN4 driver init, ret:0`、
+conninfra pre-cal `ret=0`，但**从来没有 wlan0**，`/sys/class/net` 只有 lo 和 usb0。
+
+### 15.2 根因链（三层）
+
+1. **NVRAM 缺失**：驱动 probe 时 `request_firmware("mediatek/mt6893/WIFI")`；
+   mainline 的 linux-firmware 没有这个文件。驱动把「加载 NVRAM + WiFi 上电」推迟到
+   workqueue，2/6/9/13 s 各重试一次，4 次后放弃（`CHOPIN-NVRAM: giving up`）。
+   NVRAM 真身在 **nvdata 分区** `/APCFG/APRDEB/WIFI`（6146 B，每台机器的出厂校准）。
+2. **SoC 固件缺失**：NVRAM 有了以后上电要 `WIFI_RAM_CODE_soc3_0_1a_1.bin` 和
+   `soc3_0_ram_*.bin`（vendor 逻辑分区 `/firmware/` 里）；**缺 `soc3_0_ram_wmmcu_1a_1_hdr.bin`
+   时直接 `WiFi on/off op fail, g_data=-1`**，probe reason:3。
+3. **用户态缺失**：rootfs 里没有 `wpasupplicant` / `iw` / `wireless-regdb`，
+   NetworkManager 把 wlan0 标成 unavailable（`faux_driver regulatory: regulatory.db failed`）。
+
+### 15.3 修复（已实机验证）
+
+新增 `chopin-wifi-firmware.sh` + `chopin-wifi-firmware.service`（`WantedBy=sysinit.target`，
+`Before=sysinit.target`，在驱动放弃之前跑完）：从 nvdata 取 NVRAM、从 vendor 逻辑分区取固件，
+装进 `/lib/firmware`；幂等。刷入/重刷 rootfs 后第一次启动即生效。
+
+实机证据：
+
+```
+[    2.088244] CHOPIN-NVRAM: loaded 'mediatek/mt6893/WIFI', size=6146, state=READY
+[    2.088269] CHOPIN-NVRAM: loaded after deferral, powering on WiFi
+...
+wlan0  wlan1  p2p0  ap0  (ip link)
+```
+
+`CHOPIN-DIAG net:` 也能看到 wlan0（e6:02:f7:45:3a:1d，DOWN/NO-CARRIER）。
+
+### 15.4 还没做
+
+- rootfs 缺 `wpasupplicant`、`iw`、`wireless-regdb`：需要离线 .deb（Windows 下载后 scp），
+  装完 NetworkManager 才能扫 AP、连网。
+- 驱动还会请求 `wifi_sigma.cfg` / `txpowerctrl.cfg`（-2 警告，可选；vendor 只有 `wifi.cfg`，已装）。
+- 蓝牙（同属 conninfra）还没验证；BT 固件同样在 vendor 分区。
+
+---
+
+## 16. 2026-11-15 14:45–15:05：WiFi 连上外网（用户态补齐 + 时间同步）
+
+### 16.1 离线装 WiFi 用户态
+
+设备没有外网，所以在构建机（WSL）上从 Debian trixie arm64 索引解析依赖并下载 .deb，
+经 USB 网络 scp 到设备，`dpkg -i` 安装（`dpkg --audit` 干净）：
+
+```
+iw 6.9-1+b1            libnl-3-200 3.7.0-2      libnl-genl-3-200 3.7.0-2
+libnl-route-3-200 3.7.0-2   libpcsclite1 2.3.3-1  wireless-regdb 2026.05.30-1~deb13u1
+wpasupplicant 2:2.10-24
+```
+
+装完 NetworkManager 仍显示 wlan0 unavailable —— **需要 `systemctl restart NetworkManager`**
+才会去用新的 wpa_supplicant（D-Bus 激活）。重启后 wlan0/wlan1/ap0 变为 disconnected（可用），
+`nmcli device wifi rescan` 能列出周围 AP，`iw reg get` 也有 regdb 了。
+
+### 16.2 连接与结果
+
+```
+nmcli device wifi connect C8:50:E9:CC:11:B0 password *** ifname wlan0
+```
+
+- 连上 5 GHz（5240 MHz，TX 780 Mbit/s，信号 -30 dBm），DHCP 拿到 **192.168.1.220/24**，
+  默认路由 192.168.1.1；
+- `ping 223.5.5.5` 14 ms；`apt-get update` 33 MB / 18 s（约 1.8 MB/s）。
+
+### 16.3 坑：系统时间停在 2026-04-14，HTTPS 全挂
+
+- 现象：`ping`/HTTP 正常，但 `curl https://mirrors.tuna...` 返回 000（5 s 超时）。
+- 根因：RTC 没有电池（读出来是 2069-12-31 的垃圾值），系统时间停在 2026-04-14，
+  TLS 证书"尚未生效" → 握手失败；`apt` 的源又全是 https，所以直接卡死。
+- 修复：`date -u -s ...` 手动校准后 HTTPS 立即正常；再装 **systemd-timesyncd**
+  （`timedatectl` 现在 `System clock synchronized: yes / NTP service: active`，
+  RTC 也被内核写回正确时间）。
+
+### 16.4 已固化
+
+- `debian/config/packages.gnome` 增加：`wpasupplicant iw wireless-regdb systemd-timesyncd
+  tcpdump iperf3`；
+- `02-configure-rootfs.sh` 增加 enable `systemd-timesyncd`、`wpa_supplicant`；
+- 设备上 NetworkManager 已保存 "WiFi 1" 配置（autoconnect），冷启动会自动连。
+
+---
+
+## 17. 2026-11-15 14:30–14:40：WLAN 多接口的解释与 NetworkManager 收口
+
+### 17.1 四个 netdev 是哪来的
+
+MTK WLAN-GEN4 驱动在**同一个 wiphy** 上建了四个 netdev：
+
+| 接口 | 作用 | 正常状态 |
+| --- | --- | --- |
+| `wlan0` | 主 STA（station），日常上网用的就是它 | UP，连着 AP |
+| `wlan1` | 第二个 STA，驱动支持双 STA 并发（如 2.4G+5G 同时连） | DOWN，不用 |
+| `ap0` | Soft-AP（热点）接口 | DOWN，开热点才用 |
+| `p2p0` | Wi-Fi Direct | DOWN，不用 |
+
+所以终端里 `wlan1/p2p0/ap0` 全是 DOWN 是**正常的**，只有 `wlan0` 需要 UP
+（当时 `wlan0` 已经是 `192.168.1.220` + 已连接，只是截图里滚过去了）。
+
+### 17.2 当时的真实问题：多了一个野配置在 ap0 上乱连
+
+`nmcli device` 里 `ap0` 显示 `connecting (configuring) → WiFi`，日志：
+
+    device (ap0): state change: config -> failed (reason 'ssid-not-found')
+    device (ap0): Activation: failed for connection 'WiFi'
+
+原因是面板里点过 SSID "WiFi"，NetworkManager 建了一个**没绑定接口**的 "WiFi" 配置，
+autoconnect 会在每个 wifi device（包括 ap0/wlan1）上尝试，而 ap0 是 AP 接口、永远
+associate 不上，于是一直重试。已删除该配置，保留绑定到 `wlan0` 的 "WiFi 1"。
+
+### 17.3 收口：NM 不管理多余接口
+
+新增 `/etc/NetworkManager/conf.d/chopin-interfaces.conf`（合并了原来的
+`chopin-usb-gadget.conf`，NM 对 `unmanaged-devices` 是**后者覆盖前者**，两个文件会打架）：
+
+    [keyfile]
+    unmanaged-devices=interface-name:usb0;interface-name:usb1;interface-name:ap0;interface-name:wlan1;interface-name:p2p0
+
+效果：`nmcli device` 里 wifi 只剩 `wlan0`（connected），GNOME 控制中心不再出现
+ap0/wlan1 两个多余的 Wi-Fi 页签。
+
+**代价**：GNOME 的"打开 Wi-Fi 热点"目前不可用（ap0 被 unmanage 了）。要开热点时把
+ap0 从 unmanaged 列表里去掉，或直接用 hostapd 在 ap0 上起。
+
+---
+
+## 18. 2026-11-15 14:50–15:10：扬声器出声（MT6893 + MT6359 + CS35L41）
+
+### 18.1 之前为什么没有声卡
+
+- machine driver 其实已经在树里：`sound/soc/mediatek/mt8192/mt6893-mt6359.c`（专门为 chopin 写的，
+  DAI 链是 AFE I2S3 → 两颗 CS35L41），但 `CONFIG_SND_SOC_MT6893_MT6359` **从来没开**，
+  CS35L41 codec 也没编 → `/proc/asound/cards` 一直是空的。
+- 编成模块还差一个符号：machine driver 调 `mt8192_mck_enable()/mt8192_mck_disable()`，
+  而 AFE 模块没有导出这两个（modpost: undefined!）→ 在 `mt8192-afe-clk.c` 补了
+  `EXPORT_SYMBOL_GPL`（内核 commit `8bf059655`）。
+
+### 18.2 改了哪些
+
+- `chopin_defconfig`：`CONFIG_SND_SOC_MT6893_MT6359=m`（Kconfig 会 select MT6359 codec 和
+  CS35L41_I2C）；
+- 模块：`mt6893-mt6359.ko`、重编的 `snd-soc-mt8192-afe.ko`、`snd-soc-cs35l41{,-lib,-i2c}.ko`、
+  `snd-soc-wm-adsp.ko`、`cs_dsp.ko`；开机由 udev 按 modalias 自动加载（不需要 modules-load）。
+
+### 18.3 实机结果
+
+- 两颗功放在 i2c6 0x40/0x42：`Cirrus Logic CS35L41 (35a40), Revision: B2`；
+- **card 0 [mt6893mt6359]** 注册成功，`Playback_1` 可播放，264 个 mixer control；
+- `speaker-test -D hw:0,0 -c 2 -t sine -f 440 -l 1` → **外放有声音**（用户确认，左右声道）；
+- 音量：`Left/Right Digital PCM`（0–913，89% = 0 dB 最大），已调到 70%（-22.25 dB）。
+
+### 18.4 注意 / 遗留
+
+- **AFE 模块不能 rmmod 重载**：remove 路径有 refcount WARN，重载 probe 直接 `-EACCES`
+  （第一次就是先加载 machine driver 再加载 codec，卡没起来；重启后由 udev 按正确顺序加载就好了）。
+  以后动音频要重启，别热重载 AFE。
+- 开机 15.9 s 有一条 `refcount_t: addition on 0` 的 WARN（kworker），暂时没有可见影响，待查。
+- **耳机/听筒/麦克风**（MT6359 PMIC codec 侧）、UCM 配置、GNOME 音量键联动都还没验证。
+
+### 18.5 PipeWire：桌面音频也通了（15:15）
+
+- 卡出现后 `pactl` 仍看不到 sink：`pipewire.service` 的单元里是
+  `Requires=pipewire.socket dbus.service`，而 rootfs 里**没有 `dbus-user-session`**，
+  用户会话里根本没有 `dbus.service` → 只有 `pipewire-pulse.service` 起来，
+  主 pipewire 和 wireplumber 都起不来。
+- 修复：`apt-get install dbus-user-session pulseaudio-utils`，然后
+  `systemctl --user enable --now pipewire.socket pipewire.service wireplumber.service`。
+- 结果：
+  ```
+  $ pactl list short sinks
+  45  alsa_output.platform-sound.stereo-fallback  PipeWire  s32le 2ch 48000Hz  IDLE
+  ```
+  `paplay /tmp/test440.wav` 返回 0，sink 从 SUSPENDED 变 IDLE，默认 sink 已设为它、
+  音量 70%。GNOME 的声音面板和音量键现在有东西可控了。
+- 构建树：`packages.gnome` 增加 `dbus-user-session`（pipewire/pipewire-pulse/wireplumber
+  原本就有）。
+
+---
+
+## 19. 2026-11-15 15:30–15:50：系统音量条"最小还有声"的根因与修复
+
+### 19.1 现象
+
+- GNOME 音量条已经拖到最小（界面显示静音），**扬声器还是有声音**；
+- 反过来调大也感觉变化不明显；
+- WirePlumber 的保存音量还会自己往下掉（84% → 54% → 28% → 1%）。
+
+### 19.2 根因
+
+- CS35L41 声卡只暴露一个 **joined mono 的硬件音量控制**（Left/Right Analog PCM、
+  Left/Right Digital PCM），PipeWire 的 ALSA 设备走的是 **hardware volume**
+  （pw-dump 里能看到 route.hw-volume）；
+- 但实测拖系统音量条时**这两个 mixer 控件根本不动**（始终 817 / 19），
+  也就是 PipeWire 以为自己在调硬件，实际输出电平仍由固定的功放增益决定 →
+  系统音量条变成"装饰"，0% 也照样出声；
+- 保存的路由音量（0.216 线性 ≈ 18%）又会在每次播放开始/结束时被重新应用，
+  造成"音量条自己往下掉"。
+
+### 19.3 修复
+
+新增 /etc/wireplumber/wireplumber.conf.d/51-chopin-soft-mixer.conf：
+
+    monitor.alsa.rules = [
+      { matches = [ { device.name = "alsa_card.platform-sound" } ]
+        actions = { update-props = { api.alsa.soft-mixer = true } } },
+      { matches = [ { node.name = "alsa_output.platform-sound.stereo-fallback" } ]
+        actions = { update-props = { api.alsa.soft-mixer = true } } }
+    ]
+
+重启 pipewire/wireplumber 后，pw-dump 里 device 和 node 都带上了
+api.alsa.soft-mixer: true → 系统音量改由 PipeWire 软件衰减，
+0% 就是真正的 -inf，硬件增益固定（模拟 +19.5 dB / 数字 0 dB）。
+
+### 19.4 另外
+
+- WirePlumber 保存的路由音量被早期调试写成了 0.216（≈18%），
+  已改回当前音量（0.343 ≈ 70%），避免它一直把音量往回拉。
+- 重建 rootfs 时这个 conf 走 overlay，不需要额外脚本。

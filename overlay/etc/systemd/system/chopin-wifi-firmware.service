@@ -1,0 +1,13 @@
+[Unit]
+Description=chopin WLAN firmware and NVRAM installer
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/chopin-wifi-firmware.sh
+
+[Install]
+WantedBy=sysinit.target

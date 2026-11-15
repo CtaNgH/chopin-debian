@@ -14,8 +14,12 @@ rootfs/镜像/Mesa 源码树等大文件全部在 `.gitignore` 里，可随时�
 | Mesa | 默认交叉编译 **Mali-G77 (panfrost)** 版 libgallium；`MESA_INSTALL_G77=0` 回退 Debian 原版（llvmpipe） |
 | 桌面 | GNOME 48.7 走 **Wayland**（mutter + EGL/GBM + kmsro + panfrost）；X11 下 mutter 不出帧 |
 | 触摸 | NVT36672C 固件自愈服务 + 驱动时序修复；Y 轴镜像问题已修复并在实机验证 |
+| USB 网络 | configfs gadget：CDC-ACM 串口 + **CDC-NCM** 网卡（usb0 = 192.168.42.2/24 + dnsmasq）；Windows 11 自带 usbncm 驱动，SSH 免密可用 |
+| WiFi | WLAN-GEN4 内置驱动 + vendor 固件 + nvdata 里的 NVRAM；wlan0 连 5 GHz，apt 实测 1.8 MB/s |
+| 音频 | MT6893/MT6359/CS35L41 声卡（card 0 mt6893_mt6359），扬声器播放正常；PipeWire + WirePlumber，软件音量 |
+| 时间 | RTC 没有电池，systemd-timesyncd 启动后校准（否则 TLS/apt 全挂） |
 | 镜像 | ext4 + Android sparse + `boot-chopin-debian.img` |
-| 实机 | Debian 13.7 + GNOME 48.7（Wayland，1080×2400@120，缩放 2.5），触摸与串口控制台正常 |
+| 实机 | Debian 13.7 + GNOME 48.7（Wayland，1080×2400@120，缩放 2.5）；触摸、串口、USB 网络/SSH、WiFi、扬声器正常 |
 | 许可 | MIT（脚本/overlay）；Debian 软件包保留各自许可 |
 
 > 构建手册是本文；当前状态与阻塞见 [docs/PLAN.md](docs/PLAN.md)；
