@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""chopin: turn the power button into a screen on/off toggle.
+
+Why the power button does not suspend
+-------------------------------------
+Suspend is not usable on this board.  Every attempt tears the display down
+("Skipping disable of already disabled panel" -> DSI buffer underrun -> a
+half-initialised panel), and repeated attempts have visibly damaged the LCD
+(image sticking at the edges).  The reference port reached the same
+conclusion independently, see chopin-support docs/SUSPEND-ANALYSIS.md.
+
+So the button only drives the backlight: the panel keeps scanning out and
+only the light goes off.  Waking is instant and the DSI/panel state machines
+are never touched, which is exactly where the suspend garbling comes from.
+
+GNOME is told to stay out of the way (logind HandlePowerKey=ignore, gsd
+power-button-action='nothing'); this daemon owns the button.
+
+Usage:
+  chopin-powerkey                 # daemon: watch the PMIC key device
+  chopin-powerkey --toggle        # toggle the backlight once and exit
+  chopin-powerkey --device /dev/input/event3   # override the key node
+"""
+import argparse
+import os
+import select
+import struct
+import subprocess
+import sys
+
+EV_KEY = 1
+KEY_POWER = 116
+SAVE = "/run/chopin-powerkey-brightness"
+BACKLIGHT = "/sys/class/backlight"
+
+
+def log(msg):
+    print("chopin-powerkey: " + msg, flush=True)
+
+
+def find_key_device(code):
+    """Return the /dev/input/eventN node that reports @code, or None."""
+    for entry in sorted(os.listdir("/sys/class/input")):
+        if not entry.startswith("event"):
+            continue
+        try:
+            with open("/sys/class/input/%s/device/capabilities/key" % entry) as f:
+                words = f.read().split()
+        except OSError:
+            continue
+        value = 0
+        for i, word in enumerate(reversed(words)):
+            value |= int(word, 16) << (i * 64)
+        if (value >> code) & 1:
+            return "/dev/input/" + entry
+    return None
+
+
+def backlight_path(override=None):
+    if override:
+        return os.path.join(override, "brightness") if os.path.isdir(override) else override
+    for name in sorted(os.listdir(BACKLIGHT)):
+        path = os.path.join(BACKLIGHT, name, "brightness")
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def read_int(path):
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def write_int(path, value):
+    try:
+        with open(path, "w") as f:
+            f.write(str(value))
+        return True
+    except OSError as err:
+        print("chopin-powerkey: %s: %s" % (path, err), file=sys.stderr, flush=True)
+        return False
+
+
+MODE_FILE = "/etc/chopin-powerkey-mode"
+
+
+def powerkey_mode():
+    """'lock' (default) or 'blank'.
+
+    lock  - blank the screen and lock the session, like a native screen-off;
+    blank - only blank the screen, the desktop stays unlocked behind it.
+    """
+    try:
+        with open(MODE_FILE) as f:
+            mode = f.read().strip()
+    except OSError:
+        return "lock"
+    return mode if mode in ("lock", "blank") else "lock"
+
+
+def lock_session():
+    """Lock the graphical session, the way a native screen-off would.
+
+    The panel is never disabled here, so without an explicit lock the desktop
+    would stay unlocked behind a dark screen.
+    """
+    if powerkey_mode() != "lock":
+        return
+    try:
+        subprocess.run(["loginctl", "lock-sessions"], check=False, timeout=10)
+    except OSError as err:
+        log("loginctl lock-sessions failed: %s" % err)
+
+
+def toggle(bl):
+    current = read_int(bl)
+    if not current:
+        # screen is dark: restore the brightness saved on the way down
+        saved = read_int(SAVE) or (read_int(os.path.join(os.path.dirname(bl), "max_brightness")) or 2047) // 2
+        log("on (%d)" % saved)
+        write_int(bl, saved)
+    else:
+        write_int(SAVE, current)
+        write_int(bl, 0)
+        log("off (saved %d), session locked" % current)
+        lock_session()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--toggle", action="store_true", help="toggle the backlight once and exit")
+    ap.add_argument("--device", help="input event node to watch (default: the one reporting KEY_POWER)")
+    ap.add_argument("--backlight", help="backlight device directory or brightness file")
+    args = ap.parse_args()
+
+    bl = backlight_path(args.backlight)
+    if not bl:
+        print("chopin-powerkey: no backlight device", file=sys.stderr, flush=True)
+        return 1
+
+    if args.toggle:
+        toggle(bl)
+        return 0
+
+    dev = args.device or find_key_device(KEY_POWER)
+    if not dev:
+        print("chopin-powerkey: no input device reporting KEY_POWER", file=sys.stderr, flush=True)
+        return 1
+
+    # A shutdown while the screen was dark leaves 0 in
+    # /var/lib/systemd/backlight, and systemd-backlight restores it at boot, so
+    # the panel would come up black.  Light it again instead of waiting for the
+    # first key press to "wake" a machine that was never asleep.
+    if read_int(bl) == 0:
+        saved = read_int(SAVE) or (read_int(os.path.join(os.path.dirname(bl), "max_brightness")) or 2047) // 2
+        log("startup: backlight was 0, restoring %d" % saved)
+        write_int(bl, saved)
+
+    log("%s -> %s (power key)" % (dev, bl))
+    fd = os.open(dev, os.O_RDONLY)
+    fmt = "llHHi"
+    size = struct.calcsize(fmt)
+
+    while True:
+        ready, _, _ = select.select([fd], [], [], 60)
+        if not ready:
+            continue
+        data = os.read(fd, size * 16)
+        if not data:
+            # device went away (or a plain file hit EOF): do not spin
+            log("key device closed")
+            return 0
+        for off in range(0, len(data) - size + 1, size):
+            _, _, etype, code, value = struct.unpack(fmt, data[off:off + size])
+            # value 1 = press; leave release and autorepeat alone
+            if etype == EV_KEY and code == KEY_POWER and value == 1:
+                toggle(bl)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

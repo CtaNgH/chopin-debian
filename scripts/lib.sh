@@ -2,39 +2,25 @@
 # 公共函数：路径、版本、chroot 挂载。所有脚本通过 source 使用。
 set -euo pipefail
 
-# 本仓库根目录（chopin-debian/）
-DEBIAN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# 顶层工作区（chopin-linux/）；单独 clone debian 时也成立，只是默认找不到 kernel/
-PROJECT="$(dirname "$DEBIAN_DIR")"
+PROJECT="$(cd "$(dirname "$0")/../.." && pwd)"
+DEBIAN_DIR="$PROJECT/debian"
 CONFIG_DIR="$DEBIAN_DIR/config"
-BUILD_DIR="${BUILD_DIR:-$DEBIAN_DIR/build}"
-OUT_DIR="${OUT_DIR:-$DEBIAN_DIR/out}"
+BUILD_DIR="$DEBIAN_DIR/build"
+OUT_DIR="$DEBIAN_DIR/out"
 ROOTFS="$BUILD_DIR/rootfs"
-
-# 内核仓库：默认与本仓库同级的 kernel/（顶层布局）。
-# 单独使用本仓库时：KERNEL_REPO=/path/to/chopin-kernel make build
-KERNEL_REPO="${KERNEL_REPO:-$PROJECT/kernel}"
-KERNEL_DIR="${KERNEL_DIR:-$KERNEL_REPO/linux}"
-KERNEL_OUT="${KERNEL_OUT:-$KERNEL_REPO/out}"
-MKBOOTIMG="${MKBOOTIMG:-$KERNEL_REPO/scripts/mkbootimg.py}"
-
-# 原厂镜像：不随仓库分发，放进顶层 stock/ 或用环境变量指定
-STOCK_DIR="${STOCK_DIR:-$PROJECT/stock}"
-STOCK_BOOT="${STOCK_BOOT:-$STOCK_DIR/boot_a.img}"
-STOCK_DTBO="${STOCK_DTBO:-$STOCK_DIR/dtbo_a.img}"
+KERNEL_DIR="$PROJECT/linux"
 
 log() { echo "==> $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 load_env() {
     set -a
-    # shellcheck source=../config/versions.env
     . "$CONFIG_DIR/versions.env"
     set +a
 }
 
 require_root() {
-    [ "$(id -u)" -eq 0 ] || die "需要 root 运行：sudo make build（或 sudo ./scripts/build-all.sh）"
+    [ "$(id -u)" -eq 0 ] || die "需要 root 运行"
 }
 
 chroot_mount() {
@@ -60,22 +46,4 @@ write_sources() {
     rm -f "$ROOTFS"/etc/apt/sources.list.d/*.list "$ROOTFS"/etc/apt/sources.list.d/*.sources
     install -Dm644 "$CONFIG_DIR/debian-archive-keyring.gpg" \
         "$ROOTFS/usr/share/keyrings/debian-archive-keyring.gpg"
-}
-
-# 仅当单元文件存在时 enable。
-# 注意：chroot 里没有运行中的 systemd，systemctl list-unit-files 不可靠，直接查文件。
-unit_exists() {
-    local unit="$1"
-    [ -e "$ROOTFS/usr/lib/systemd/system/$unit.service" ] ||
-    [ -e "$ROOTFS/lib/systemd/system/$unit.service" ] ||
-    [ -e "$ROOTFS/etc/systemd/system/$unit.service" ]
-}
-
-enable_unit() {
-    local unit="$1"
-    if unit_exists "$unit"; then
-        in_chroot systemctl enable "$unit" || log "enable $unit 失败"
-    else
-        log "跳过不存在的单元：$unit.service"
-    fi
 }

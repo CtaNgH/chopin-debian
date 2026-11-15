@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=chopin: never suspend
+Comment=suspend is unsupported on this board (it tears the panel down); keep a block inhibitor armed for the whole session
+Exec=gnome-session-inhibit --inhibit suspend --reason "suspend is unsupported on chopin" sleep infinity
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

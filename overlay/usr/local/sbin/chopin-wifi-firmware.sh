@@ -35,8 +35,23 @@ if [ -f "$NVRAM" ] && [ -f "$RAMCODE" ]; then
 fi
 
 # ---- NVRAM from the nvdata partition -------------------------------------
-if [ ! -f "$NVRAM" ] && [ -e /dev/disk/by-partlabel/nvdata ]; then
-    NVD=$(readlink -f /dev/disk/by-partlabel/nvdata)
+# Same udev-timing problem as the super partition below: at Before=sysinit the
+# /dev/disk/by-partlabel links do not exist yet on a freshly flashed system.
+# Wait for the link, or take the raw node (nvdata is partition 6 on chopin).
+if [ ! -f "$NVRAM" ]; then
+    NVD=""
+    i=0
+    while [ "$i" -lt 20 ]; do
+        if [ -e /dev/disk/by-partlabel/nvdata ]; then
+            NVD=$(readlink -f /dev/disk/by-partlabel/nvdata)
+            break
+        fi
+        [ -b /dev/sdc6 ] && { NVD=/dev/sdc6; break; }
+        sleep 0.5
+        i=$((i + 1))
+    done
+fi
+if [ ! -f "$NVRAM" ] && [ -n "${NVD:-}" ]; then
     mkdir -p /run/chopin-nvdata
     if mount -t ext4 -o ro "$NVD" /run/chopin-nvdata 2>/dev/null; then
         if [ -f /run/chopin-nvdata/APCFG/APRDEB/WIFI ]; then
@@ -52,8 +67,22 @@ fi
 
 # ---- firmware from the vendor logical partition --------------------------
 if [ ! -f "$RAMCODE" ]; then
+    # The service runs Before=sysinit.target, i.e. before udev has created
+    # /dev/disk/by-partlabel — on a freshly flashed image that lookup returns
+    # nothing and the firmware would never be installed.  Wait briefly for the
+    # udev link, and fall back to the raw device node of this board (super is
+    # partition 61 on chopin, same as the initramfs fallback for userdata).
     SUPER=
-    [ -e /dev/disk/by-partlabel/super ] && SUPER=$(readlink -f /dev/disk/by-partlabel/super)
+    i=0
+    while [ "$i" -lt 20 ]; do
+        if [ -e /dev/disk/by-partlabel/super ]; then
+            SUPER=$(readlink -f /dev/disk/by-partlabel/super)
+            break
+        fi
+        [ -b /dev/sdc61 ] && { SUPER=/dev/sdc61; break; }
+        sleep 0.5
+        i=$((i + 1))
+    done
     if [ -n "$SUPER" ] && [ -x "$PY" ] && [ -f "$LP_TOOL" ]; then
         MAP=$("$PY" "$LP_TOOL" map "$SUPER" vendor 2>/dev/null) || MAP=
         if [ -n "$MAP" ]; then

@@ -8,10 +8,10 @@ set -euo pipefail
 load_env
 require_root
 
-# GPU 用户态已打通（2026-11-15）：内核 panfrost + Mesa kmsro 让 Xorg(glamor)/GLX/EGL
-# 都跑在 Mali-G77 上，所以默认安装 G77 版 libgallium。注意这份构建只有 panfrost
+# GPU 用户态已打通（2026-11-15）：kernel panfrost + kmsro 让 Xorg(glamor)/GLX/EGL
+# 都跑在 Mali-G77 上，因此默认安装 G77 版 libgallium。注意这份构建只有 panfrost
 # （-Dllvm=disabled，没有 swrast），系统里不再有 llvmpipe 兜底；需要软件渲染时用
-# MESA_INSTALL_G77=0 make build。
+# MESA_INSTALL_G77=0 跳过替换。
 if [ "${MESA_INSTALL_G77:-1}" != "1" ]; then
     log "跳过 G77 libgallium 替换（MESA_INSTALL_G77=0），保留 Debian 原版 Mesa（llvmpipe）"
     exit 0

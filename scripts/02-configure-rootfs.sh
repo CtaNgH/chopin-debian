@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# 配置 Debian rootfs：用户、网络、服务、overlay、Mesa pin。可重复执行。
+# 配置 Debian rootfs：用户、网络、服务、overlay、Mesa pin。
 set -euo pipefail
-. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+. "$(dirname "$0")/lib.sh"
 load_env
 require_root
-[ -d "$ROOTFS" ] || die "先运行 00-mkrootfs.sh"
+[ -d "$ROOTFS" ] || die "先运行 00-01"
 
 chroot_mount
 trap chroot_umount EXIT
@@ -26,18 +26,14 @@ LABEL=chopinroot / ext4 defaults,noatime 0 1
 tmpfs /tmp tmpfs defaults,nosuid,nodev,size=1G 0 0
 CHOPIN_EOF
 
-ln -sf /usr/share/zoneinfo/"$CHOPIN_TIMEZONE" "$ROOTFS/etc/localtime"
-echo "$CHOPIN_TIMEZONE" > "$ROOTFS/etc/timezone"
+ln -sf /usr/share/zoneinfo/Asia/Shanghai "$ROOTFS/etc/localtime"
+echo "Asia/Shanghai" > "$ROOTFS/etc/timezone"
 echo "en_US.UTF-8 UTF-8" > "$ROOTFS/etc/locale.gen"
 echo "zh_CN.UTF-8 UTF-8" >> "$ROOTFS/etc/locale.gen"
 in_chroot locale-gen
 in_chroot update-locale LANG=en_US.UTF-8
 
 if ! in_chroot id "$CHOPIN_USER" >/dev/null 2>&1; then
-    # minbase 可能缺少这些附加组；先补齐，保证 --skip-gnome 也能构建
-    for g in sudo audio video render input plugdev netdev; do
-        grep -q "^$g:" "$ROOTFS/etc/group" || in_chroot groupadd -r "$g"
-    done
     in_chroot useradd -m -s /bin/bash -G sudo,audio,video,render,input,plugdev,netdev "$CHOPIN_USER"
 fi
 echo "$CHOPIN_USER:$CHOPIN_PASSWORD" | in_chroot chpasswd
@@ -46,6 +42,24 @@ echo "root:$CHOPIN_PASSWORD" | in_chroot chpasswd
 cp -a "$DEBIAN_DIR/overlay/." "$ROOTFS/"
 install -Dm755 "$DEBIAN_DIR/initramfs/chopin-gadget.sh" "$ROOTFS/usr/local/sbin/chopin-gadget.sh"
 chmod 755 "$ROOTFS/usr/local/sbin/chopin-diag.sh" "$ROOTFS/usr/local/sbin/chopin-growroot.sh"
+chmod 755 "$ROOTFS/usr/local/sbin/chopin-nvt-firmware.sh"
+chmod 755 "$ROOTFS/usr/local/sbin/chopin-audio-gain.sh" \
+          "$ROOTFS/usr/local/sbin/chopin-charge-tune.sh" \
+          "$ROOTFS/usr/local/sbin/chopin-autologin.sh"
+
+# 旧镜像里留下过一个只列 usb0/usb1 的同类 conf，NetworkManager 对
+# unmanaged-devices 是后者覆盖前者，留着它会让 ap0/wlan1/p2p0 重新变成
+# 受管设备（GNOME 的 Wi-Fi 面板里冒出一堆多余接口）。
+rm -f "$ROOTFS/etc/NetworkManager/conf.d/chopin-usb-gadget.conf"
+
+# 可选：构建机上若已备好触摸固件（从原厂 vendor 分区提取，见 README），
+# 直接打进 rootfs；没有也可以，chopin-nvt-firmware.service 会在首启时从
+# super 分区的 vendor 逻辑分区里自取。
+if ls "$DEBIAN_DIR"/third_party/firmware/novatek_nt36672c_k10a_*.bin >/dev/null 2>&1; then
+    mkdir -p "$ROOTFS/lib/firmware"
+    install -m644 -t "$ROOTFS/lib/firmware" "$DEBIAN_DIR"/third_party/firmware/novatek_nt36672c_k10a_*.bin
+    log "已打入触摸固件（third_party/firmware）"
+fi
 
 mkdir -p "$ROOTFS/etc/apt/preferences.d"
 cat > "$ROOTFS/etc/apt/preferences.d/chopin-mesa.pin" <<CHOPIN_EOF
@@ -54,21 +68,17 @@ Pin: version $MESA_VERSION
 Pin-Priority: 1001
 CHOPIN_EOF
 
-if [ -x "$ROOTFS/usr/bin/dconf" ]; then
-    in_chroot dconf update
-fi
+in_chroot dconf update
 
-for unit in gdm3 NetworkManager ssh chopin-gadget chopin-diag chopin-growroot \
-            chopin-nvt-firmware chopin-wifi-firmware chopin-xorg-kmsdev systemd-timesyncd wpa_supplicant; do
-    enable_unit "$unit"
-done
-in_chroot systemctl enable serial-getty@ttyGS0.service || log "跳过 serial-getty@ttyGS0"
+in_chroot systemctl enable gdm3 NetworkManager ssh chopin-gadget chopin-diag chopin-growroot chopin-nvt-firmware chopin-wifi-firmware chopin-xorg-kmsdev chopin-powerkey chopin-audio-gain chopin-charge-tune chopin-gpu-freq chopin-cpu-freq chopin-charge-recharge.timer systemd-timesyncd wpa_supplicant
+in_chroot systemctl enable serial-getty@ttyGS0.service
 in_chroot systemctl set-default graphical.target
 ln -sf /dev/null "$ROOTFS/etc/systemd/system/systemd-pstore.service"
 
 # 镜像不携带构建机的 resolv.conf 与 SSH host key
 rm -f "$ROOTFS/etc/resolv.conf"
 rm -f "$ROOTFS"/etc/ssh/ssh_host_*
+
 
 # chopin 内核当前没有 zram 模块（CONFIG_ZRAM 未开）：
 # mask zramswap，避免每次启动 systemd 进入 degraded。

@@ -36,7 +36,19 @@ UDC_STATE="$(cat /sys/class/udc/*/state 2>/dev/null)"
 klog "initramfs: udc=[$UDC_NOW] state=$UDC_STATE ttyGS=[$(ls /dev/ttyGS* 2>/dev/null | tr '\n' ' ')]"
 
 pstore_digest > /dev/tty0 2>/dev/null
-( cat /sys/fs/pstore/* 2>/dev/null > /dev/ttyGS0 ) &
+# 把 pstore 原文也灌给 USB CDC-ACM（没有串口时唯一的取证通道）。三个约束：
+#  - 没有主机连接时写 ttyGS0 会阻塞，后台的 cat 会一直挂着并占住这个 tty；
+#  - 它会活过 switch_root，于是 rootfs 里 gadget 重建时 rmdir acm.usb0 永远等不到
+#    tty 关闭（u_serial.c: gserial_free_port() -> wait_event(close_wait, gs_closed())），
+#    任务卡在 D 状态，system suspend 的冻结阶段也会因此超时失败；
+#  - 所以这里限时、限量：每个文件最多 2 秒、最多 8 KB（busybox 的 dd 不支持
+#    oflag=nonblock，就用 timeout 兜底），绝不留一个可能永久阻塞的后台进程。
+(
+    for f in /sys/fs/pstore/*; do
+        [ -f "$f" ] || continue
+        timeout 2 dd if="$f" of=/dev/ttyGS0 bs=4096 count=2 2>/dev/null
+    done
+) &
 
 say "chopin: waiting for root filesystem (LABEL=chopinroot) ..."
 ROOT=""

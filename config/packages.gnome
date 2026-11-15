@@ -20,6 +20,7 @@ libegl1
 libgles2
 xwayland
 dbus-x11
+dbus-user-session
 polkitd
 accountsservice
 upower
@@ -43,9 +44,7 @@ wireless-regdb
 # --- 时间同步：RTC 没有电池，启动后必须靠 NTP 校准，否则 TLS/apt 全部失败 ---
 systemd-timesyncd
 
-# --- PipeWire 用户会话（pipewire.service 依赖 dbus.service） ---
-dbus-user-session
-
-# --- 现场诊断工具 ---
+# --- 音频/现场诊断工具 ---
+pulseaudio-utils
 tcpdump
 iperf3

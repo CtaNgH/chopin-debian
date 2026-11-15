@@ -1,0 +1,11 @@
+[Unit]
+Description=chopin: raise the MT6360 charge current
+After=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/chopin-charge-tune.sh
+
+[Install]
+WantedBy=multi-user.target

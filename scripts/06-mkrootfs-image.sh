@@ -15,6 +15,11 @@ rm -f "$ROOTFS"/var/cache/apt/archives/*.deb
 rm -rf "$ROOTFS"/var/lib/apt/lists/*
 rm -rf "$ROOTFS"/var/cache/apt/*.bin
 
+# 每台机器第一次启动自己生成 machine-id：构建机上的那份不能跟着镜像发出去，
+# 否则所有设备共用一个 ID（journal/DHCP 客户端 ID 都会撞）。
+: > "$ROOTFS/etc/machine-id"
+rm -f "$ROOTFS/var/lib/dbus/machine-id"
+
 log "创建 ext4：$IMG（$ROOTFS_SIZE_MB MB）"
 truncate -s "$ROOTFS_SIZE_MB"M "$IMG"
 mkfs.ext4 -q -F -L "$ROOTFS_LABEL" -d "$ROOTFS" "$IMG"

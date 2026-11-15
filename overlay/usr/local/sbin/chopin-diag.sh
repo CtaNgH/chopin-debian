@@ -1,7 +1,7 @@
 #!/bin/sh
 # chopin bring-up diagnostics：关键状态写 /dev/kmsg，随 ramoops 跨重启保留。
 K=/dev/kmsg
-log() { echo "<3>CHOPIN-DIAG $*" > "$K" 2>/dev/null; }
+log() { echo "<6>CHOPIN-DIAG $*" > "$K" 2>/dev/null; }
 
 snap() {
     log "=== t=$1s ==="

@@ -1,12 +1,14 @@
 # chopin Debian 13 (Trixie) + GNOME 适配方案 v2（基于实机状态）
 
+> 注：文中的 `out/*.img`、`debian/out/*.img` 是当时的现场镜像路径；可再生镜像已于
+> 2026-11-16 清理，当前发布件见 `D:\MT6891-Mainline\dist\chopin-debian-20261115\`（见 [CLEANUP.md](../CLEANUP.md)）。
+
 > 更新时间：2026-11-15 04:30
 > 设备：Redmi Note 10 Pro 5G / POCO X3 GT（chopin，MT6891Z/CZA）
-> 说明：现场记录，`<workdir>` 代表当时的私有工作目录；公开仓库布局见 [../README.md](../README.md)。
 > 内核：Linux 7.3.4 + 18 补丁（分支 chopin，release 7.3.4-g5775fb2ac0a1-dirty，`boot-chopin-p0.img`）
 > 用户空间：Debian 13.7 (trixie) + GNOME 48.7 + Mesa 25.0.7-2+deb13u1
-> 本文是**当前状态下的执行方案**；构建细节见 [../README.md](../README.md)，内核细节见
-> [../../kernel/docs/kernel.md](../../kernel/docs/kernel.md)，现场记录见 [BRINGUP.md](BRINGUP.md)。
+> 本文是**当前状态下的执行方案**；构建细节见 [README.md](debian/README.md)，内核细节见 [docs-kernel.md](docs-kernel.md)，
+> 现场记录见 [debian/BRINGUP.md](debian/BRINGUP.md)。
 
 ---
 
@@ -34,7 +36,7 @@
 | GPU panfrost | ❌ | probe -110：GPU soft/hard reset timeout、bus_clock=0、no core_clk_rate knob；无 renderD128 |
 | 稳定性 | ❌ | X11 桌面下数分钟偶发 SError panic（ramoops 已取），UFS/显示 I/O 相关，见 P0 |
 | 触摸 | ✅ | NVT 固件自愈后 IRQ33 正常计数，evtest 有真实 ABS_MT 事件（根因与修复见 §2.7） |
-| 网络 | ❌ 仅 lo | RNDIS 未启用、WiFi 无 NVRAM |
+| 网络 | 🔶 | USB CDC-NCM：usb0=192.168.42.2，Windows 自动 DHCP，SSH 免密可用；WiFi 仍无 NVRAM |
 | SSH | ✅（本机） | ssh.service active；自动生成 host key；无网络前仅本机可用 |
 
 ---
@@ -213,7 +215,7 @@ X11（vendor mediatek_v2 KMS）下仍走 llvmpipe，panfrost 的用户态渲染�
 - X11：glamor/GLX/EGL 都能建上下文（glxgears 122 FPS），但 **mutter 在 X11 上不出帧**
   （DRI2 GLX + kmsro 的 present 路径卡死），所以桌面不用 X11。
 - **Wayland 是可用路径**：`WaylandEnable=true`，gnome-shell 以 wayland 合成器跑，
-  显示正常、可交互。详见 [BRINGUP.md §12](docs/BRINGUP.md)。
+  显示正常、可交互。详见 [BRINGUP.md §12](debian/BRINGUP.md)。
 - 遗留：这份 libgallium 只有 panfrost（无 llvmpipe 兜底）；触摸坐标待校准（P1-d）。
 
 ### P1-d 触摸坐标 ✅ 已完成（2026-11-15 13:15，实机确认）
@@ -264,7 +266,7 @@ X11（vendor mediatek_v2 KMS）下仍走 llvmpipe，panfrost 的用户态渲染�
 
 ```bash
 # 构建（WSL，Ubuntu 24.04 构建主机）
-cd <workdir>
+cd /root/MT6891-Mainline
 ./scripts/build.sh                      # 内核 Image.gz + dtbs + modules
 sudo debian/scripts/build-all.sh        # rootfs + initramfs + boot.img（04 默认跳过 Mesa 替换）
 # 产物：debian/out/boot-chopin-debian.img、chopin-rootfs.sparse.img
@@ -272,7 +274,7 @@ sudo debian/scripts/build-all.sh        # rootfs + initramfs + boot.img（04 默
 
 ```powershell
 # 刷机（Windows，fastboot）
-cd <workdir>
+cd D:\MT6891-Mainline
 .\scripts\flash-debian.ps1              # boot + userdata（userdata 会被清空）
 ```
 
@@ -289,7 +291,8 @@ cd <workdir>
 3. 🔶 **P0 稳定性**：已按 LK 真实布局修正 DTS reserved-memory 并刷入（`boot-chopin-p0.img`）；
    内存压力 + 桌面 5 分钟无 panic，**长稳验证中**
 4. ✅ **P1-c 用户态 GPU**：已完成（Wayland + kmsro + panfrost，见 §P1-c）
-5. ⏭ RNDIS/SSH 网络 → WiFi NVRAM → MT6360 充电 → 音频
+5. ✅ **USB 网络（CDC-NCM）+ SSH 已打通**（2026-11-15 14:10，BRINGUP §14）；
+   ⏭ WiFi NVRAM → MT6360 充电（当前 500 mA SDP、状态 Full，基本正常）→ 音频
 6. ⏭ 桌面打磨、内核告警清理、文档与上游化
 
 > 注意：当前设备上的现场修改（gdm 停止、default.target=multi-user、journald=volatile、
@@ -303,8 +306,146 @@ cd <workdir>
 
 ## 8. 文件索引
 
-- 方案：`docs-debian.md`（v1 总方案）、`docs/PLAN.md`（本文件，当前状态方案）
-- 现场：`docs/BRINGUP.md`（实机记录）、`HANDOFF.md`（一页纸交接）
+- 方案：`docs-debian.md`（v1 总方案）、`debian/PLAN.md`（本文件，当前状态方案）
+- 现场：`debian/BRINGUP.md`（实机记录）、`HANDOFF.md`（一页纸交接）
 - 内核：`docs-kernel.md`
 - 构建：`debian/README.md`、`debian/scripts/`
-- 产物：`debian/out/`、Windows 侧 `<workdir>\out\`
+- 产物：`debian/out/`、Windows 侧 `D:\MT6891-Mainline\out\`
+
+---
+
+## 9. 2026-11-16 现状复核（实机审计）
+
+> 复核时间：2026-11-16 01:00–01:30。方式：串口 COM11 + USB CDC-NCM 上的
+> `ssh -i chopin_key root@192.168.42.2`。实机跑的就是
+> `dist/chopin-debian-20261115`（boot.img 构建于 11-15 23:20，内核
+> `7.3.4-g5775fb2ac0a1-dirty #23`）。本节之前的内容原样保留作历史；
+> **以后按本节的实测数据推进**。
+
+### 9.1 复核结论：已经真的可用的部分
+
+| 功能 | 复核证据 |
+| --- | --- |
+| 系统 | Debian 13.7，systemd `running`，failed units = 0 |
+| 桌面 | gnome-shell 48.7 在 tty2 跑 Wayland 会话；`eglinfo` = `Mali-G77 (Panfrost)` |
+| 显示/触摸 | `card1-DSI-1` connected 1080×2400；NVT irq 33 在计数，evtest 事件正常 |
+| GPU | `/dev/dri/renderD128`、panfrost 1.6.0、`mfgpll = 349999848` |
+| 音频 | card 0 `mt6893mt6359`（CS35L41 x2 已 probe） |
+| WiFi | wlan0 192.168.1.220，5 GHz -30 dBm，`curl` 200 |
+| USB | gadget `configured`（acm+ncm），usb0 192.168.42.2 |
+| 电源键 | `chopin-powerkey` active，backlight 0 ↔ N |
+| 电量计 | bq27z561：85%、488 循环、health Good、34.4 ℃ |
+| 存储 | `/dev/sdc75` 106G ext4，3.2G 已用 |
+| 日志 | 本次启动 0 panic、0 SError、0 `ufshcd_check_errors` |
+
+### 9.2 复核发现的缺口（按优先级）
+
+1. **CPU 没有 DVFS / cpuidle / 温控**（本轮新发现，影响最大）
+   - `/sys/devices/system/cpu/cpu0/cpufreq` 不存在；`/sys/devices/system/cpu/cpuidle/current_driver` = `none`；
+     `/sys/class/thermal/` 只有电池一个 zone，dmesg 有 `Failed to register thermal zone device -19`。
+   - 后果：CPU 跑在 LK 交下来的固定频率，既不能降频省电，也没有过热保护。
+   - 内核侧：`CONFIG_CPU_FREQ=y`、`CONFIG_MTK_THERMAL=m`、`CONFIG_MTK_LVTS_THERMAL=m`
+     都已经开着，**缺的是 DT 节点和平台挂钩**——DTS 里是厂商的
+     `mediatek,mt-cpufreq` 加 `tboard_thermistor1..6`，mainline 没有对应驱动。
+2. **GPU 固定 350 MHz**（`mfgpll = 349999848`，没有 devfreq 节点）——与上游现状一致。
+3. **蓝牙完全没编进内核**：`# CONFIG_MTK_BTIF is not set`，没有 hci 设备。
+   但树里已经有整套 `connectivity/bt/mt66xx/btif`（`bt_drv_6893`，直接 `hci_register_dev`）
+   和 `drivers/misc/mediatek/btif`，**只差 DTS 的 btif 节点、配置和固件**。
+4. **传感器 / 相机 / 指纹 / 视频硬解**：`/dev/video*` 为空，IIO 只有 PMIC ADC；
+   加速度计挂在 SCP 后面（与上游结论一致）。
+5. **充电只跑 SDP 500 mA**：`mt6360-chg` 的 `input_current_limit=500000`，电量计
+   `current_now=-8 mA`（净放电）。插电脑 USB 口时这是正常值；用充电器时的
+   BC1.2/DCP 抬流还没验证。
+6. **新镜像 `/root/.ssh` 是空的**（有意为之），换机/重刷后 SSH 进不来，
+   需要"串口装公钥"这一步（本轮已补回，并应写进 README）。
+7. **DHCP 下发的 DNS 不可用**：`192.168.1.100` 不应答 → apt/getent 全挂
+   （`curl` 直连 IP 正常）。实机已改成 `ignore-auto-dns + 192.168.1.1,223.5.5.5`，
+   需要回流到镜像。
+8. **SError 仍未长跑验证**：11-16 00:33–00:57 那 24 分钟是**正常 reboot**（不是 panic），
+   pstore 里仍只有 4-14 那条 483 s 的旧记录，得重新做长跑。
+
+## 10. 下一阶段路线（2026-11-16 起）
+
+按"日常收益 / 风险"排序，每条带验收标准。
+
+### P1 性能与热：CPU DVFS + 温控（最高优先级）
+
+- 目标：两个 policy（A78 ×4、A55 ×4）+ SoC 温度 zone，schedutil 能升能降，过温能降频。
+- 路线：
+  1. 先核对 mainline `mediatek-cpufreq-hw`（`drivers/cpufreq/mediatek-cpufreq-hw.c`）
+     对 MT6893 是否适用；不适用就以 vendor `mt-cpufreq` 的 OPP 表为基础写一个薄适配
+     （clk 拿 CPU PLL，`cpufreq-dt` 挂 policy）。
+  2. 温控：把 `tboard_thermistor*` 换成 mainline `mtk-thermal`（auxadc）或 `lvts` 节点，
+     先让 SoC 温度可读，再挂 `cpu_thermal` 冷却设备。
+  3. 顺带查 cpuidle：`ARM_PSCI_CPUIDLE` 已开但 PSCI 没报状态，看 LK/ATF 的 psci 版本。
+- 验收：`cpufreq-info` 两个 policy；空载降频、`stress-ng` 时升频；
+  `thermal_zone*` 随负载变化并触发降频；桌面不卡。
+
+### P2 蓝牙（功能缺口里最划算的一个）
+
+- 目标：hci0 出现，能扫描、配对 HID（键盘/鼠标），A2DP 出声。
+- 路线（上游已走通）：① defconfig 打开 `CONFIG_MTK_BTIF` + `CONFIG_MTK_COMBO_BT`；
+  ② DTS 补 btif 节点（基址/IRQ/时钟照厂商 DTS）；③ conninfra 的 BT 分支
+  （`BT_PLATFORM=6893`、BTIF 时钟 ID）；④ 固件从 vendor 分区取（ram code + patch），
+  bdaddr 从 nvdata 取；⑤ 用户态 bluez + `CONFIG_UHID`（HID 必需）。
+- 验收：`bluetoothctl scan on` 有设备；键盘能打字；耳机 A2DP 有声音。
+
+### P3 日常打磨
+
+- **充电**：插充电器验证 BC1.2/DCP 抬流到 1.5–2 A；必要时给 `mt6360-chg` 补 DCP 检测。
+- **DNS**：把 `ignore-auto-dns` + 公共 DNS 兜底写进 `debian/overlay`（NM 配置）。
+- **麦克风**：MT6359 ADC/通路 + UCM，验证录音（外放已 OK）。
+- **SSH 首启**：`debian/README.md` 补"串口装公钥"一段（镜像里 `/root/.ssh` 故意为空）。
+- **发布**：P1/P2 落地后重建 boot.img + rootfs，`SHA256SUMS` 改由脚本生成。
+
+### P4 研究项（收益小、代价大，先不做）
+
+- 传感器（SCP 协处理器，要 SCP 固件和 rpmsg 栈）；
+- 相机（ISP 全在厂商侧）；
+- 视频硬解（VDEC 没有 V4L2 驱动）；
+- 指纹（Goodix SPI + 用户态 TA）；
+- 8 GiB 机型的 reserved-memory（现在按 6 GiB 写死）。
+
+### P0 稳定性（贯穿全程）
+
+- 长跑：桌面 2 h + `stress-ng --vm` 2 h + 过夜 idle；每次重启前后对
+  `/sys/fs/pstore` 做快照。
+- 若再 panic：按 [analysis/ufs-serror.md](../analysis/ufs-serror.md) 的实验矩阵继续，
+  并把 `console-ramoops-0` / `dmesg-ramoops-0` 存到 `/root/chopin-crash/`。
+
+## 11. 2026-11-16 02:00 用户反馈问题：定位与处理
+
+> 用户列了 8 条体验问题。能当场在实机上改的已经改完（下表"已修"），
+> 需要内核/刷机的标成"待刷"，并写清根因。
+
+| # | 问题 | 根因（实测） | 处理 |
+| --- | --- | --- | --- |
+| 1 | 显示/触摸卡顿 | **CPU 没有 cpufreq**：`armpll_bl0..3 = 730 MHz`、`armpll_ll = 1.79 GHz`、`ccipll = 800 MHz` 就是 LK 留下的固定值，Linux 不参与调频（`/sys/devices/system/cpu/cpu0/cpufreq` 不存在）。A78 只跑到 730 MHz，桌面合成全压在慢核上。GPU 另锁 350 MHz。 | GPU：已修（`chopin-gpu-freq.service` 650 MHz，实测 349999848→650000000 成功）。CPU：待刷 P1 |
+| 2 | 最大音量偏小 | CS35L41 的 `Analog PCM Volume` 停在复位值 **0（+0.5 dB）**，满量程是 20（+20.5 dB）；数字音量 817 已经是 0 dB。内核/用户态都没人设它。 | ✅ 已修：`chopin-audio-gain.service`（analog=20，可用 `/etc/chopin-audio-gain` 覆盖） |
+| 3 | Wi-Fi 面板出现多个接口 | MTK fullmac 在一个 wiphy 上建出 wlan0/wlan1/ap0/p2p*，NM 全当独立网卡；`/etc/NetworkManager/conf.d/` 里还残留一个只列 usb0/usb1 的旧 conf，**后者覆盖前者**，于是 ap0/wlan1/p2p0 又变回受管 | ✅ 已修：删旧 conf、unmanaged 列表补 `p2p-dev-*`，NM 重启后只剩 wlan0 |
+| 4 | USB 外接输入设备不工作 | DTS 里 xhci 子节点 `usb@0` **没有 `phys`**，xhci-mtk 于是报 `USB0 root hub has no ports`（0 端口，永远枚举不到设备）；同时 `role-switch-default-mode=peripheral`、没有 OTG VBUS，角色不会切到 host | 待刷：给 xhci 加 phys + OTG boots VBUS + 让 tcpc 驱动切 host，见 §12 |
+| 5 | 满电只显示 85% | 不是电量计算错：SDP 500 mA 输入被机身自己吃掉，进电池只有 ~85 mA，而 `charge_term_current = 250 mA` → 充电器判定"充满"提前结束在 4.284 V（≈85%），状态还挂着 Charging | ✅ 已修：输入抬到 900 mA、`constant_charge_current=1.5 A`、`charge_term_current=100 mA`（`chopin-charge-tune`） |
+| 6 | PD 快充 | 我们用的是 vendor 的 `mt6360-tcpc` 小驱动，只报 SDP 500 mA，不跑 TCPM；上游走 `tcpci_mt6360.c` + 两个补丁后可协商 12V/2.25A（电池 3.76 A） | 待刷：切到上游 tcpci_mt6360 + 打两个补丁，见 §12 |
+| 7 | 电源键逻辑和原生不一致 | 原来只切背光，**不锁屏**：屏幕黑了但桌面还解锁着，按回来直接就是原界面 | ✅ 已修：切背光的同时 `loginctl lock-sessions`，亮屏回到锁屏（实测 `LockedHint=yes`）；面板始终不关，避免烧屏 |
+| 8 | 为什么开机自动登录 | 镜像 `/etc/gdm3/daemon.conf` 里 `AutomaticLoginEnable=true` + `AutomaticLogin=chopin`，是为"手机形态、没有键盘"设计的 | ✅ 加开关：`chopin-autologin off` / `on` / `status`（改动后自动重启 gdm） |
+| 9 | 左右声道反了 | DTS 把 0x40 标成 "Right"、0x42 标成 "Left"，machine driver 又按 codec 顺序发 I2S slot（Right 拿 slot 0 = 左声道），于是立体声左右互换 | 内核改 `rx_slot[] = {1, 0}`（已改，待刷机） |
+
+## 12. 待刷机的内核项（按收益排序）
+
+1. **CPU DVFS**（收益最大）：`drivers/cpufreq/mediatek-cpufreq-hw.c` 只认
+   `mediatek,cpufreq-hw` / `mt8196-cpufreq-hw`，MT6893 的 MCUSYS SRAM 布局要另做；
+   备选是照 vendor `mt_cpufreq` 的 OPP 表写一个薄驱动（`armpll_bl*/armpll_ll/ccipll`
+   在 clk 驱动里都是可 set_rate 的 MTPL PLL），加上 MT6359 `vproc` 调压与 idling 协调。
+   验收：两个 policy + schedutil，空载降频、压测升频。
+2. **USB host**：xhci 子节点补
+   `phys = <&u2port PHY_TYPE_USB2>`（`u2port` 已在 DTS）、`vbus-supply`（MT6360 OTG
+   boost 或固定 5V），`role-switch` 交给 tcpc；先验证"插 U 盘/键盘能枚举"，再谈供电。
+3. **PD 快充**：enabled `CONFIG_TYPEC_TCPM` + `CONFIG_TYPEC_TCPCI_MT6360`，DTS 给
+   i2c5 上的 `tcpc@4e` 加 `compatible = "mediatek,mt6360-tcpc"`，套上游两个补丁
+   （`TCPC_POWER_CTRL=0x70` + unmask alerts），关掉 vendor 的小 tcpc。
+4. **GPU 650 MHz**（可选）：照上游 v134，panfrost 里加 `mfg_sel → clk26m → 重锁 mfgpll`
+   的三步，启动时不调用，只留 sysfs 旋钮；实测 +11.5%，750 MHz 反而更慢（欠压）。
+5. **温控**：`tboard_thermistor*` 换成 mainline `mtk-thermal`/`lvts` 节点，先让 SoC
+   温度可读，再挂 `cpu_thermal` 冷却设备（当前只有电池一个 zone）。
+
+

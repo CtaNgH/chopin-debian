@@ -1,0 +1,6 @@
+[Unit]
+Description=chopin: re-arm charging after a premature end-of-charge
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/chopin-charge-recharge.sh

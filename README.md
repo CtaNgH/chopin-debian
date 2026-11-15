@@ -200,3 +200,21 @@ sudo make build          # 从 Debian 镜像重新构建
 
 脚本、overlay、文档以 **MIT** 发布（见 `LICENSE`）；通过 apt 安装的 Debian 软件包、
 Mesa 源码及厂商固件保留其原始许可，再分发前请自行确认。
+
+## 2026-11-16：体验修复与 CPU 提频
+
+这一轮把实机上反馈的问题逐个落成服务/脚本（全部在 `overlay/`，无需改内核的部分）：
+
+| 文件 | 作用 |
+| --- | --- |
+| `etc/chopin-cpu-freq` + `chopin-cpu-freq.service` | 配合内核 `chopin-cpuclk`，开机把 A78 从 729 MHz 钉到 **1.5 GHz**（offline 大核 → 重锁 armpll_bl → online） |
+| `etc/chopin-gpu-freq` + `chopin-gpu-freq.service` | Mali-G77 从 bootloader 的 350 MHz 提到 **650 MHz**（panfrost 的 core_clk_rate 旋钮） |
+| `chopin-audio-gain.sh` + `.service` | CS35L41 模拟增益从复位值 +0.5 dB 提到 **+20.5 dB**（系统音量仍走 PipeWire soft-mixer） |
+| `chopin-charge-tune.sh` + `.service` + `99-chopin-charge.rules` | 输入 500→**900 mA**、充电 1.5 A、终止电流 250→**100 mA**、截止电压 4.35→**4.4 V** |
+| `chopin-charge-recharge.service` + `.timer` | MT6360 提前 EOC 后状态会锁在 Full，每 5 分钟把输入限流 0→900 mA 循环一次清掉锁存 |
+| `chopin-powerkey`（改造） | 电源键熄屏**不再锁屏**（`/etc/chopin-powerkey-mode` = `blank` / `lock`） |
+| `chopin-autologin.sh` | `chopin-autologin on|off|status` 切换 GDM 自动登录 |
+| `etc/NetworkManager/conf.d/chopin-interfaces.conf` | 除 usb0/usb1 外，把 ap0/wlan1/p2p0/**p2p-dev-*** 全部 unmanaged，GNOME 只显示一个 Wi-Fi 网卡 |
+
+同轮的内核侧改动（在 [chopin-kernel](../kernel) 的 0029–0034）：
+WLAN 中断不再打断 s2idle、启动日志清零、左右声道、SWIOTLB 64 MB、显示 DMA mask 34 位、`chopin-cpuclk` 驱动。

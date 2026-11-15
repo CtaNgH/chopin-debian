@@ -1,0 +1,4 @@
+# chopin: re-apply the charge current when the cable is plugged / unplugged.
+# The charger reports SDP (500 mA) on every connect, which is below the phone's
+# own consumption; chopin-charge-tune.sh raises it again.
+ACTION=="add|change", SUBSYSTEM=="power_supply", KERNEL=="mt6360-chg*", RUN+="/usr/local/sbin/chopin-charge-tune.sh"

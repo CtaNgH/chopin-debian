@@ -1,9 +1,10 @@
 # chopin Debian 13 实机 bring-up 记录
 
+> 注：文中的 `out/*.img`、`debian/out/*.img` 是当时的现场镜像路径；可再生镜像已于
+> 2026-11-16 清理，当前发布件见 `D:\MT6891-Mainline\dist\chopin-debian-20261115\`（见 [CLEANUP.md](../CLEANUP.md)）。
+
 > 时间：2026-11-14 23:30
 > 设备：Redmi Note 10 Pro 5G / POCO X3 GT（chopin，MT6891Z/CZA）
-> 说明：本文是从开发工作区原样搬运的现场记录，`<workdir>` 代表当时的私有工作目录，
-> 里面的绝对路径只作参考；公开仓库的目录布局见 [../README.md](../README.md)。
 > 镜像基线：Linux 7.3.4 + 18 补丁；Debian 13.7 + GNOME 48.7 + Mesa 25.0.7
 > 本文是给下一个对话/下一次接手的**现场状态**，方案见 [docs-debian.md](../docs-debian.md)，
 > 构建见 [README.md](README.md)。
@@ -33,7 +34,7 @@ gdm3 已暂时 mask，屏幕日志安静；**USB 串口仍未在正常启动里�
 | `debian/out/boot-chopin-debian.img` | 19 MB | `af4e264976b81c7c6e9008065b5eff0c941747a5677eb701338e4798b95c684d` |
 | `debian/out/chopin-rootfs.sparse.img` | 2.9 GB | `6c3be5639b55b74554f8e7c8c5b09e13f8af4369c449133fb350fe39d77efe50` |
 
-Windows 副本在 `<workdir>\out`，文件名相同。
+Windows 副本在 `D:\MT6891-Mainline\out`，文件名相同。
 它们包含的最后一个修复：`chopin-gadget.sh` 在 `$G/UDC` 非空时**直接退出**，
 不再执行 `rm -rf g1`，避免 systemd 的 `chopin-gadget.service` 把 initramfs
 刚绑好的 gadget 拆掉。
@@ -98,13 +99,13 @@ initramfs 已绑定的 config/function 删掉，USB 链路随之消失。修复�
 
 手机关机（长按电源 10 s），按住音量下 + 电源进 fastboot，然后 Windows：
 
-    cd <workdir>
+    cd D:\MT6891-Mainline
     .\scripts\flash-debian.ps1
 
 等价手动：
 
-    & "D:\Program Files (x86)\platform-tools\fastboot.exe" flash boot <workdir>\out\boot-chopin-debian.img
-    & "D:\Program Files (x86)\platform-tools\fastboot.exe" flash userdata <workdir>\out\chopin-rootfs.sparse.img
+    & "D:\Program Files (x86)\platform-tools\fastboot.exe" flash boot D:\MT6891-Mainline\out\boot-chopin-debian.img
+    & "D:\Program Files (x86)\platform-tools\fastboot.exe" flash userdata D:\MT6891-Mainline\out\chopin-rootfs.sparse.img
     & "D:\Program Files (x86)\platform-tools\fastboot.exe" reboot
 
 注意：userdata 是 2.9 GB sparse，分 12 个 chunk，约 90 s；32 位 fastboot 可用。
@@ -114,7 +115,7 @@ initramfs 已绑定的 config/function 删掉，USB 链路随之消失。修复�
 
 Windows 出现 COM11 后：
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File <workdir>\scripts\serial-cmd.ps1 -Send "id" -WaitMs 2000
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\MT6891-Mainline\scripts\serial-cmd.ps1 -Send "id" -WaitMs 2000
 
 登录：`root` / 密码 `chopin`（用户 `chopin` 同密码）。
 如果串口没有出现，但主机至少出现 `VID_1D6B&PID_0104`，说明 gadget 绑定成功、只是
@@ -122,9 +123,9 @@ getty/驱动问题；如果连 USB 设备都没有，进入 5.3。
 
 ### 5.3 没有 USB 时用 debug3
 
-`boot-chopin-debug3.img`（<workdir>\out）是已知能枚举 COM11 的镜像：
+`boot-chopin-debug3.img`（D:\MT6891-Mainline\out）是已知能枚举 COM11 的镜像：
 
-    fastboot flash boot <workdir>\out\boot-chopin-debug3.img
+    fastboot flash boot D:\MT6891-Mainline\out\boot-chopin-debug3.img
     fastboot reboot
 
 它只建 gadget、不起 Debian；串口 shell 用 **CR**（`serial-cmd.ps1` 已改为发 [char]13）。
@@ -148,13 +149,13 @@ debug3 没有 systemd，所以不能用来跑桌面；它只是救援/诊断通�
 
 ## 6. 关键路径与文件
 
-- 内核：`<workdir>/linux`，release `7.3.4-ga9777a8559e0-dirty`
-- 内核产物：`<workdir>/out/modules/lib/modules/<release>`
+- 内核：`/root/MT6891-Mainline/linux`，release `7.3.4-ga9777a8559e0-dirty`
+- 内核产物：`/root/MT6891-Mainline/out/modules/lib/modules/<release>`
 - 正常镜像：`debian/out/boot-chopin-debian.img`、`chopin-rootfs.sparse.img`
 - 诊断镜像：`boot-chopin-debug*.img`、`boot-chopin-rescue*.img`（同一目录）
 - initramfs 源：`debian/initramfs/`（`init`、`chopin-gadget.sh`、debug/rescue 变体）
-- 串口工具：`<workdir>\scripts\serial-cmd.ps1`（CR 回车、115200 8N1、DTR/RTS）
-- 刷机脚本：`<workdir>\scripts\flash-debian.ps1`
+- 串口工具：`D:\MT6891-Mainline\scripts\serial-cmd.ps1`（CR 回车、115200 8N1、DTR/RTS）
+- 刷机脚本：`D:\MT6891-Mainline\scripts\flash-debian.ps1`
 
 ## 7. Git
 
@@ -638,7 +639,7 @@ Image.gz + dtb，不用动模块**（本次只碰触摸驱动和 DTS，模块 AB
 
 | 项 | 值 |
 | --- | --- |
-| 镜像 | <workdir>\out\boot-chopin-touch-gap.img（19.5 MB，含触摸修复 + gap） |
+| 镜像 | D:\MT6891-Mainline\out\boot-chopin-touch-gap.img（19.5 MB，含触摸修复 + gap） |
 | sha256 | `e6a3165f269a0865d41036b45fe0d2c2d114064ccfc87822e909b169a8bd915d` |
 | 内含 | `chopin-md-usage-gap` 节点 ✅、`novatek,invert-y` 已删除 ✅（`zcat Image.gz | strings` 验证） |
 | 回滚 | `out/boot-chopin-p0.img` |
@@ -701,6 +702,9 @@ Wayland + panfrost 桌面连续跑了 **3 小时 32 分**没有 SError：
 - 也就是「右半边 Y 反向」的问题已经消失，剩下的偏差只剩手指落点本身的误差量级。
 
 镜像结论：移植时加的 `novatek,invert-y` / 右半屏翻转确实是错的，删掉后触摸映射恢复正常。
+
+---
+
 ## 14. 2026-11-15 13:40–14:10：USB 网络打通（CDC-NCM + SSH）
 
 ### 14.1 结论（已实机验证）
@@ -709,7 +713,7 @@ Wayland + panfrost 桌面连续跑了 **3 小时 32 分**没有 SError：
   - 设备端：`usb0 = 192.168.42.2/24`，dnsmasq 发 192.168.42.100–110；
   - Windows 侧：自动枚举成 **UsbNcm Host Device**（“以太网 2”），DHCP 拿到 `192.168.42.106`；
   - `ping 192.168.42.2`、`ssh root@192.168.42.2` 都通。
-- **SSH 免密可用**：私钥在 `out/chopin_key`，公钥已写入设备 `/root/.ssh/authorized_keys`。
+- **SSH 免密可用**：私钥在 `D:\MT6891-Mainline\chopin\keys\chopin_key`，公钥已写入设备 `/root/.ssh/authorized_keys`。
 - **重启后自动生效**：initramfs 先建 ACM-only gadget；systemd 的 `chopin-gadget.service` 发现
   `/etc/chopin-gadget-rndis` 存在、而当前 gadget 没有网络功能，就 unbind → 重建 acm+ncm → 重新 bind。
   本轮重启后实测：4.0 s 完成重建，usb0 / DHCP / SSH 全部正常。
@@ -981,3 +985,744 @@ api.alsa.soft-mixer: true → 系统音量改由 PipeWire 软件衰减，
 - WirePlumber 保存的路由音量被早期调试写成了 0.216（≈18%），
   已改回当前音量（0.343 ≈ 70%），避免它一直把音量往回拉。
 - 重建 rootfs 时这个 conf 走 overlay，不需要额外脚本。
+
+---
+
+## 20. 2026-11-15 22:30–22:50：电源键 = 熄屏/亮屏（不做挂起）
+
+### 20.1 现象与三层原因
+
+按电源键，`journalctl` 里只有：
+
+    systemd-logind[347]: Power key pressed short.
+
+然后什么都不发生。拆开看有三层：
+
+1. **GNOME 把键吃掉**：`gsd-media-keys` 常驻持有 `handle-power-key` 的 block
+   inhibitor（"GNOME handling keypresses"），而它自己的 power 绑定是空的
+   （`org.gnome.settings-daemon.plugins.media-keys power = ['']`）。logind 默认
+   尊重 inhibitor，于是两边都不动手。
+2. **挂起本身进不去**（当时想用 `HandlePowerKey=suspend` 绕开）：WLAN-GEN4 在
+   `glBusSetIrq()` 里无条件 `enable_irq_wake()`，空闲时每秒也来一两个中断，
+   s2idle 一进 suspend 窗口就被 `CHOPIN-ABORT: wakeup irq 317 (wlan0)` 打断。
+   另外 initramfs 的 pstore 转储会在后台留一个 `cat` 占着 `/dev/ttyGS0`，
+   gadget 重建时 `rmdir acm.usb0` 卡在 D 状态（`gserial_free_port()` 等 tty 关闭），
+   这个任务又会让 suspend 的冻结阶段超时。
+3. **面板被拆**：每次挂起尝试都会走一遍 display 的 blank/unblank
+   （`Skipping disable of already disabled panel` → `DSI0: buffer underrun`）。
+   参考项目 chopin-support 的 `docs/SUSPEND-ANALYSIS.md` 记录了同样的现象，
+   并且**反复尝试会在屏幕边缘留下烙印**（LCD image sticking）。
+
+### 20.2 做法：不挂起，只切背光
+
+参考项目（chopin-support `gnome` 分支）的 `chopin-powerkey` 就是这套思路：
+电源键只写背光，面板保持扫描输出，DSI/panel 状态机完全不碰，亮屏瞬时、不会花屏。
+
+本仓库落地：
+
+| 文件 | 作用 |
+| --- | --- |
+| `overlay/usr/local/bin/chopin-powerkey` | 找上报 KEY_POWER 的 evdev 节点；按下时切 `/sys/class/backlight/lm36273/brightness`（0 ↔ 上次的值，存在 `/run/chopin-powerkey-brightness`）；带 `--toggle` / `--device` 便于测试；启动时若发现背光是 0（上次关机时正好熄屏，systemd-backlight 会把 0 恢复回来）会自动点亮，避免开机黑屏 |
+| `overlay/etc/systemd/system/chopin-powerkey.service` | 开机自启，`Restart=always` |
+| `overlay/etc/systemd/logind.conf.d/10-chopin-no-suspend.conf` | `HandlePowerKey=ignore`、`IdleAction=ignore`、睡眠键/合盖全部 ignore |
+| dconf `00-chopin` | `power-button-action='nothing'`（不让 gsd 抢去挂起） |
+
+实现要点（也是踩过的坑）：
+
+- **不要 `systemctl restart systemd-logind` 来重载配置**：会话的 device control 会丢，
+  gnome-shell 随即报 `Could not open device /dev/input/event0: NotInControl`，
+  触摸/键盘全死（本次就是重启 gdm3 才恢复）。改完 logind 配置重启 GDM 或整机；
+- systemd 257 的 systemd-sleep 只扫描 `/usr/lib/systemd/system-sleep/`，
+  放 `/etc/systemd/system-sleep/` 不会执行；
+- 不要用 mask `sleep.target` 的办法禁挂起：gnome-session 会立刻退出，
+  GDM 反复自动登录、屏幕一直闪。
+
+### 20.3 实机验证
+
+    $ journalctl -b -u chopin-powerkey -o cat
+    chopin-powerkey: /dev/input/event0 -> /sys/class/backlight/lm36273/brightness (power key)
+    chopin-powerkey: off (saved 628)     ← 按第一下：背光 0
+    chopin-powerkey: on (628)            ← 按第二下：背光恢复
+    chopin-powerkey: off (saved 628)
+    chopin-powerkey: on (628)
+
+用户确认熄屏/亮屏正常；`/sys/class/backlight/lm36273/brightness` 在 0 与 628
+之间切换，全程没有任何 suspend entry。另外用一份合成的 input_event 文件
+（`--device /tmp/fake.ev`）验证过事件解析路径。
+
+### 20.4 遗留
+
+- 熄屏时触摸和合成器仍在工作（只是背光为 0，不是 DPMS off），误触会操作到
+  看不见的 UI。参考项目在 Denial 里是真正的 screenOff；GNOME 这边要 DPMS
+  只能走 compositor 自己的空闲空白。
+- 真要省电还得靠 60 s 空闲 DPMS（现在 `idle-delay=0`，永不空白）。
+- 挂起仍不可用。内核侧"WLAN IRQ 不再当 wakeup source"的修改保留
+  （`axi.c`），避免以后误触发挂起时又被 WiFi 打断。
+
+---
+
+## 21. 2026-11-15 23:00–23:35：社区测试镜像（一键刷机包）
+
+### 21.1 包的内容
+
+`D:\MT6891-Mainline\dist\chopin-debian-20261115\`
+
+| 文件 | 说明 |
+| --- | --- |
+| `images/boot.img` | 内核 `7.3.4-g5775fb2ac0a1-dirty`（含本轮日志修复）+ initramfs |
+| `images/rootfs.img` | Debian 13.7 + GNOME 48.7 根文件系统，Android sparse（3.4 GB） |
+| `flash.bat` / `flash.sh` | Windows / Linux 一键刷机（等 fastboot → 切 slot a → boot → userdata → 重启） |
+| `README.md` | 前提、步骤、默认账号、已验证功能、已知问题、回滚 |
+| `SHA256SUMS.txt` | 两个镜像的 sha256 |
+
+rootfs 取自本机（清掉个人信息：/root、家目录、WiFi 连接、SSH host key、machine-id、
+单机校准固件），首次开机由服务从**本机**分区重新提取触摸固件 / WiFi NVRAM，
+并自动扩容根分区。
+
+### 21.2 两个必须记住的镜像坑
+
+1. **sparse 镜像的零块不能用 DONT_CARE**。`mk-sparse.py` 原来把全零块写成
+   `CHUNK_TYPE_DONT_CARE`，意思是"目标上这块内容无所谓，跳过不写"。但社区用户
+   的 userdata 里全是旧文件系统数据：第一次刷完开机，凡是被标成 DONT_CARE 的
+   块都保留了旧内容，而 ext4 元数据说它们属于新文件 —— 表现为随机的文件损坏：
+   `python3` 一启动就段错误、触摸/WiFi 固件装不上、电源键服务反复崩溃。
+   改成 `CHUNK_TYPE_FILL`（0xCAC2，写 4 字节 0）后，镜像 3.4 GB → 3.4 GB
+   （几乎不变），但内容正确。验证方法：把 sparse 解回 raw，sha256 必须与 raw
+   镜像一致。
+2. **`Before=sysinit.target` 的服务拿不到 `/dev/disk/by-partlabel/*`**。
+   `chopin-wifi-firmware.service` 在 udev 建好链接之前就跑了，于是
+   "no super partition or lp.py" → 固件不装 → 没有 wlan0。两个分区查找都改成
+   "等 udev 链接最多 10 s，否则用本板固定分区节点兜底"（super=/dev/sdc61，
+   nvdata=/dev/sdc6，和 initramfs 里 userdata=/dev/sdc75 的兜底一致）。
+
+### 21.3 实机首启验证（刷完自动重启，约 1 分钟）
+
+    == system ==        Debian 13.7, kernel 7.3.4-g5775fb2ac0a1-dirty
+    == display ==       DSI connected, 1080x2400, backlight 1023/2047
+    == touch ==         NVT36672C, IRQ 3581 计数
+    == gpu ==           /dev/dri/renderD128, gnome-shell running
+    == audio ==         card 0 [mt6893mt6359] + PipeWire sink
+    == wifi ==          wlan0 192.168.1.220, 5 GHz -32 dBm, ping 外网 OK
+    == usb gadget ==    udc=configured, acm.usb0 + ncm.usb0, usb0 192.168.42.2
+    == storage ==       /dev/sdc75 106G（growroot 已扩容），3.5G used
+    == power ==         chopin-powerkey active, 电池 85%
+    == time ==          NTP synchronized
+    == 日志 ==          WARNING/refcount/invalid drm/finger leave 计数 0，
+                        failed units 0，suspend entry 0
+    == 电源键 ==        backlight 1023 -> 0 -> 1023
+
+### 21.4 本轮顺手修掉的启动噪声（内核）
+
+- `NVT_ERR("finger leave")` → `pr_debug`（原来是每次抬手一条 KERN_ERR）；
+- `nvt_esd_check_wq` 加 `WQ_UNBOUND`（7.3 的 alloc_workqueue 警告）；
+- 面板驱动改用 `devm_drm_panel_alloc()`（原来手动填 drm_panel 字段，
+  `refcount` 是 0，`drm_panel_add()` 每次开机刷一段
+  "refcount_t: addition on 0; use-after-free"）；
+- `mtk_debug.c` 里 19 处 `invalid drm dev` 从 `DDPPR_ERR` 降成 `DDPINFO`
+  （NVT 在 DSI 就绪前重试 lockdown 时必然触发）；
+- `mi_dsi_panel.c` 的 lockdown 解析失败/DSI 命令失败两条降成 `pr_debug`；
+- `chopin-diag.sh` 的 kmsg 等级 `<3>` → `<6>`（诊断信息不再出现在 error 里）。
+
+结果：开机 error 级日志从 300+ 条降到 0 条 WARN，剩下的十几条是 i2c/conninfra
+的已知无害信息。
+
+### 21.5 回归测试脚本
+
+`scripts/feature-check.sh`：把上面的首启验证做成一键检查（显示/触摸/GPU/声卡/
+WiFi/USB/存储/电源键/时间/日志噪声），刷机后直接跑。
+
+### 21.6 遗留
+
+- 蓝牙、相机、耳机/麦克风仍未支持；
+- 8 GiB 机型未验证（DTS 的 reserved-memory 按 6 GiB 调）；
+- 偶发 SError 未根除（内存压力下）；
+- ~~包内 rootfs 是"本机快照 + 清理"~~ → 已改成**从零构建**（见 §21.7）。
+
+### 21.7 改成从零构建（2026-11-15 23:40）
+
+第一版镜像是"本机快照 + 清理"，用户一眼就看出里面还有他自己装的 Chrome
+（`/opt/google` 444 MB）—— 快照式打包会把操作者手动装的应用、apt 状态、
+各种临时配置一起带出去，不适合发社区。
+
+改成走项目自己的构建链（`debian/scripts/00..07`），只做增量：
+
+| 步骤 | 做了什么 |
+| --- | --- |
+| 00 | 跳过（`build/rootfs` 已存在，是 11-14 用 mmdebstrap 建的干净 trixie） |
+| 01 | `apt-get install` 当前 `packages.gnome` 清单（补上 wpasupplicant/iw/wireless-regdb/systemd-timesyncd/tcpdump/iperf3/pulseaudio-utils） |
+| 02 | overlay + 用户 + 服务 enable + dconf + locale |
+| 03 | 当前内核 release 的模块 + Image + dtb |
+| 04 | **跳过**（rootfs 里已有 G77 libgallium，源码/补丁没变） |
+| 05–07 | initramfs（修过的 init/gadget 脚本）、ext4 镜像、boot.img |
+
+结果：rootfs 3.0 GB（比快照版小 0.4 GB，没有 Chrome 和用户数据），
+`/opt` 只有 4 KB，`/home/chopin` 是 skel，`/root/.ssh` 空。
+
+两个坑：
+
+1. **WSL 的代理**：`http_proxy=127.0.0.1:7897` 对清华镜像返回 403，
+   `apt-get update` 直接失败。构建前要 `env -u http_proxy -u https_proxy ...`，
+   或给 chroot 的 apt 配 `Acquire::https::Proxy "DIRECT"`。
+2. **`mkfs.ext4 -d` 会保留文件能力**（`gst-ptp-helper` 的 caps 还在），但
+   `/var/lib/dbus/machine-id` 会被一起拷进镜像 —— 06 现在会清空 machine-id 并
+   删掉这个文件，让每台设备首启自己生成。
+
+**实机验证（2026-11-15 23:43，把从零构建的镜像刷进真机）：**
+
+    == system ==    Debian 13.7, 7.3.4-g5775fb2ac0a1-dirty
+    == display ==   DSI connected, 1080x2400, backlight 871/2047      PASS
+    == touch ==     NVT36672C, IRQ 5631                              PASS
+    == gpu ==       renderD128, gnome-shell                          PASS
+    == audio ==     card 0 [mt6893mt6359] + PipeWire sink            PASS
+    == wifi ==      5 GHz -30 dBm, 192.168.1.220, 外网可达            PASS
+    == usb ==       udc=configured, acm+ncm, usb0 192.168.42.2       PASS
+    == storage ==   106G（growroot 已扩容），3.1G used                PASS
+    == power ==     chopin-powerkey active, 电池 85%                  PASS
+    == time ==      NTP synchronized                                 PASS
+    == 日志 ==      WARN/refcount/ddic/finger 0，failed units 0，
+                    suspend entry 0
+    == 电源键 ==    backlight 871 -> 0 -> 871                        PASS
+
+首启时 WiFi 固件（NVRAM + 9 个 firmware）和触摸固件都由服务从本机分区自动装好，
+`/opt` 为空（没有 Chrome）、`/home/chopin` 是 skel、machine-id 每台机器自己生成。
+
+**发布归档（2026-11-15 23:52）**：整个包压成
+`out/chopin-debian-20261115.zip`（1.08 GiB，sha256
+`140a20764bf074979b167e41675c13a53a2584f562f2927abec9bc57f1aeaf74`，
+旁边有 `.zip.sha256`）。解压后是 `chopin-flash-20261115/`，里面镜像的
+sha256 与包内 `SHA256SUMS.txt` 一致（已解压校验）。
+
+顺带修了 `flash.bat` 的一个小坑：`echo  -> Waiting ...` 里的 `>` 被 cmd
+当成重定向，会在当前目录生成一个叫 `Waiting` 的垃圾文件；改成纯文本箭头。
+
+### 21.8 G77 的 libgallium 被 apt 覆盖（2026-11-16 00:05）
+
+从零构建的镜像刷进去后，用户反馈"显卡好像没有"。检查结果：
+
+- 内核侧 panfrost 完全正常：`mali-g77 id 0x9080`、`Initialized panfrost 1.6.0`；
+- 但用户态 `/usr/lib/aarch64-linux-gnu/libgallium-25.0.7-2+deb13u1.so` 和
+  `.so.debian` 的 sha256 **完全相同**（`a8c1b59f…`），`eglinfo` 报
+  `llvmpipe (LLVM 19.1.7, 128 bits)` —— GNOME 掉到软件渲染。
+
+原因：增量构建时我跳过了 `04-build-mesa.sh`，而 `01-install-desktop.sh` 的
+`apt install` 把 Debian 原版 libgallium 装回来了（那版不认识 G77 的 product id）。
+
+修：重跑 04（源码 tarball 已在本地，交叉编译约 10 分钟），得到 17,528,664 字节、
+sha256 `8aa303b6…` 的 G77 版（和 11-14 那次构建**逐字节一致**，可复现），
+替换进 rootfs 后 `eglinfo` 报 `Mali-G77 (Panfrost)`，gnome-shell 打开 4 个
+`renderD128` fd。
+
+教训：
+
+- `build-all.sh` 里 04 在 01 之后是对的，**增量构建不要跳 04**；
+- `MESA_INSTALL_G77=0` 可以保留 Debian 原版，但那就只有 llvmpipe（没有 G77）；
+- 验证 GPU 不要只看 `/dev/dri/renderD128` 是否存在 —— 那是内核节点，用户态没对齐时
+  它照样在。要看 `eglinfo` 的 renderer 或 `gnome-shell` 的 `/proc/<pid>/fd` 里有没有
+  `renderD*`。
+
+修好后实机全项复测（WiFi 连上后）：
+
+    PASS  DRM connector connected
+    PASS  touch reports IRQs
+    PASS  render node present            (Mali-G77 / Panfrost)
+    PASS  sound card present
+    PASS  wlan0 has an IPv4 address
+    PASS  internet reachable
+    PASS  gadget configured
+    PASS  rootfs grown past 100G
+    PASS  powerkey daemon active
+    PASS  NTP synchronized
+    PASS  backlight toggles
+
+---
+
+## 22. 2026-11-16 01:00–01:30：现状复核（审计）
+
+新镜像刷完后第一次系统复核。全程只用串口 COM11 和 USB-NCM 上的 SSH，
+没有改内核、没有刷机。**结论与路线写入 [PLAN.md §9–10](PLAN.md)**，这里只留现场原始证据。
+
+### 22.1 复核对的上
+
+    $ uname -r                       7.3.4-g5775fb2ac0a1-dirty    (#23, 11-15 23:19)
+    $ systemctl is-system-running    running        failed units = 0
+    $ eglinfo -B | grep renderer     Mali-G77 (Panfrost)          (Wayland, tty2)
+    $ cat /sys/class/drm/card1-DSI-1/status   connected
+    $ grep NVT-ts /proc/interrupts   33: 10851 ... NVT-ts-spi    (触摸在计数)
+    $ iw dev wlan0 link              SSID "WiFi", 5240 MHz, -30 dBm, 192.168.1.220
+    $ curl -o /dev/null -w %{http_code} http://deb.debian.org/debian/   200
+    $ /sys/class/power_supply/bq27z561-0: 85%, 488 cycles, health Good, 34.4 C
+    $ dmesg | grep -c SError         0        (本次启动无 SError / 无 ufshcd 错误)
+
+### 22.2 复核查出来的缺口
+
+1. **没有 cpufreq / cpuidle / 温控**（最要紧的一条）
+
+       $ ls /sys/devices/system/cpu/cpu0/cpufreq      No such file or directory
+       $ cat /sys/devices/system/cpu/cpuidle/current_driver   none
+       $ ls /sys/class/thermal/                       thermal_zone0   (只有电池)
+       $ dmesg | grep thermal                          Failed to register thermal zone device -19
+
+   defconfig 里 `CPU_FREQ`、`MTK_THERMAL`、`MTK_LVTS_THERMAL` 都是开的，
+   DTS 里却还是厂商那套 `mt_cpufreq: compatible = "mediatek,mt-cpufreq"` 和
+   `tboard_thermistor1..6` —— mainline 没有对应驱动，所以等于没有。
+2. **GPU 锁在 350 MHz**：`mfgpll = 349999848`，`/sys/class/devfreq` 空。
+3. **蓝牙没编进内核**：`# CONFIG_MTK_BTIF is not set`，无 hci 设备；
+   但 `connectivity/bt/mt66xx/btif`（`bt_drv_6893`）和 `drivers/misc/mediatek/btif`
+   都在树里，缺 DTS 节点 + 配置 + 固件。
+4. **充电是 SDP 500 mA**：`mt6360-chg` `input_current_limit=500000`、
+   `constant_charge_current=500000`，电量计 `current_now=-8000`（净放电）。
+   插的是电脑 USB 口，属正常；用充电器时的 DCP 抬流没验过。
+5. **DNS**：DHCP 下发 `192.168.1.100` 不应答，`getent` 全挂（IP 直连 200）。
+   已在实机改成：
+
+       nmcli con mod "WiFi" ipv4.ignore-auto-dns yes ipv4.dns "192.168.1.1,223.5.5.5"
+
+   修好后 `getent hosts deb.debian.org` 正常、curl 200。**要回流到镜像的 NM 配置。**
+6. **/root/.ssh 为空**（从零构建的镜像有意为之），重刷后 SSH 进不来；
+   本轮通过串口把公钥写回 `/root/.ssh/authorized_keys`。
+7. **pstore 里还是 4-14 那条旧记录**（483 s，`0xbe000411`）。11-16 00:33–00:57
+   的 24 分钟桌面会话是**正常 reboot**（日志有 `reboot: Restarting system`），
+   不是 panic，所以 SError 仍**没有**新的可证伪数据。
+
+---
+
+## 23. 2026-11-16 01:30–02:10：用户反馈的 8 条体验问题
+
+用户报：显示/触摸卡、外放偏小、Wi-Fi 面板多个接口、USB 外接输入设备不work、
+满电只显示 85%、PD 快充、电源键逻辑不像原生、为什么自动登录。
+定位结论与处理见 [PLAN.md §11–12](PLAN.md)；这里留证据。
+
+### 23.1 卡顿 = CPU 没有 DVFS
+
+    $ ls /sys/devices/system/cpu/cpu0/cpufreq     No such file or directory
+    $ grep -E "armpll|ccipll" /sys/kernel/debug/clk/clk_summary
+      ccipll        799999878
+      armpll_bl0..3 729999909     ← 4 颗 A78
+      armpll_ll     1790999146    ← 4 颗 A55
+
+CPU 频率就是 LK 编程进去的固定值，Linux 一个字节都没碰。
+（同一张表里 `mfgpll = 349999848`，GPU 也是固定 350 MHz。）
+
+触摸本身没有丢事件（NVT irq 正常计数），卡的是**合成/渲染**这一段。
+
+### 23.2 外放偏小 = 功放模拟增益停在复位值
+
+    $ amixer -c 0 cget "name='Left Analog PCM Volume'"
+      min=0,max=20  values=0                       ← +0.5 dB
+    $ amixer -c 0 cget "name='Left Digital PCM Volume'"
+      min=0,max=913 values=817                     ← 0 dB（0..+12 dB）
+
+CS35L41 的 `amp_gain_tlv = 50, 100, 0` → 0..20 = +0.5..+20.5 dB；
+`dig_vol_tlv` 1..913 = -102..+12 dB，817 正好是 0 dB。
+也就是说**模拟增益只有 0.5 dB**，硬件上白白浪费了 20 dB。
+
+修：`chopin-audio-gain.service` 开机把左右模拟音量设到 20（+20.5 dB），
+数字保持 817。可用 `echo 14 > /etc/chopin-audio-gain` 降一档。
+（PipeWire 是 soft-mixer，系统音量条仍然负责衰减，两者不冲突。）
+
+### 23.3 Wi-Fi 面板多接口 = 旧 NM conf 覆盖了新 conf
+
+    $ nmcli -t -f DEVICE,TYPE,STATE dev
+      ap0:wifi:disconnected  wlan1:wifi:disconnected  p2p-dev-ap0:wifi-p2p:disconnected ...
+
+`/etc/NetworkManager/conf.d/` 里同时有 `chopin-interfaces.conf`（11-15，含 ap0/wlan1/p2p0）
+和 `chopin-usb-gadget.conf`（11-14，只有 usb0/usb1）。NM 的 `unmanaged-devices`
+是**后者覆盖前者**，所以 ap0/wlan1 一直是受管设备。
+
+修：`02-configure-rootfs.sh` 里 `rm -f` 那个旧文件；overlay 的 unmanaged 列表补上
+`p2p-dev-*`。实机删掉 + 重启 NM 后只剩 `wlan0`（其余全部 unmanaged）。
+
+### 23.4 USB 外接输入设备 = xhci 没有端口
+
+    [ 1.037] xhci-mtk 11200000.usb: xHCI Host Controller
+    [ 1.037] xhci-mtk 11200000.usb: USB0 root hub has no ports
+    $ cat /sys/class/usb_role/11201000.usb-role-switch/role   device
+
+`mt6893.dtsi` 里 ssusb 的 xhci 子节点：
+
+    usb@0 {
+            compatible = "mediatek,mtk-xhci";
+            reg = <0x0 0x0 0x0 0x1000>;
+            ...
+            status = "okay";
+    };                              ← 没有 phys，xhci-mtk 解析出 0 个端口
+
+再加 `role-switch-default-mode = "peripheral"`、没有 OTG VBUS，角色也不会切到 host。
+详见 [PLAN.md §12](PLAN.md) 第 2 条。
+
+### 23.5 满电 85% = 充电器提前判满
+
+    $ cat .../mt6360-chg/charge_term_current        250000
+    $ cat .../mt6360-chg/input_current_limit        500000
+    $ cat .../bq27z561-0/current_now                -8000     ← 净放电
+
+SDP 500 mA 被机身吃掉，进电池 ~85 mA，而终止电流是 250 mA → 在 4.284 V
+（≈85%）就判满。修：输入 900 mA、`constant_charge_current` 1.5 A、
+`charge_term_current` 100 mA（`chopin-charge-tune.service`，udev 插拔时重跑）。
+
+实机对比（同一条 USB 线、同一个 PC 口）：
+
+    before: input=500000 charge=500000 term=250000  batt=-8000 uA  (净放电)
+    after:  input=900000 charge=1500000 term=100000 batt=+352000 uA (84% 在涨)
+
+udev 规则在插线时自动生效（`99-chopin-charge.rules`），不需要手工跑。
+
+PD 需要换驱动：见 [PLAN.md §12](PLAN.md) 第 3 条（上游补丁可到 12V/2.25A）。
+
+### 23.6 电源键 = 熄屏 + 锁屏
+
+原来只把背光写 0，桌面仍然解锁着。现在 `toggle()` 在熄屏后调
+`loginctl lock-sessions`，亮屏回到锁屏：
+
+    before: 628  locked: no
+    off:    0    locked: yes
+    on:     628  locked: yes      ← 需要解锁，和原生一致
+
+面板仍然不关（`drivers/gpu/drm/panel` 的 disable 路径会触发 DSI underrun/烧屏，
+见 §20），所以这只是"背光 + 锁屏"。
+
+### 23.7 自动登录
+
+`/etc/gdm3/daemon.conf`：`AutomaticLoginEnable=true` + `AutomaticLogin=chopin`，
+是从"手机没有键盘、要直接进桌面"的设计来的。新增
+`chopin-autologin on|off|status`，on/off 会顺带重启 gdm。
+
+---
+
+## 24. 2026-11-16 01:50–02:10：左右声道、GPU 提频、PD 复核
+
+用户这一轮提了四件事：增益到 19/20、左右声道反了、电量显示、电源键还要改。
+
+### 24.1 左右声道反了 —— 根因在"名字"与 I2S slot 的对应
+
+DTS：
+
+    cs35l41@40 (0x40)  sound-name-prefix = "Right"  → phandle 0x261
+    cs35l41@42 (0x42)  sound-name-prefix = "Left"   → phandle 0x262
+    sound { speaker-codecs { sound-dai = <0x261 0x262>; }; };   ← Right 在前
+
+machine driver `mt6893_cs35l41_i2s_hw_params()` 按 codec 顺序发 slot：
+
+    int rx_slot[] = { 0, 1 };
+    for_each_rtd_codec_dais(rtd, i, codec_dai)
+            snd_soc_dai_set_channel_map(codec_dai, 0, NULL, 1, &rx_slot[i]);
+
+I2S 的 slot 0 是**左**声道，所以标着 "Right" 的 0x40 拿到的是左声道 →
+听起来就是左右互换（和用户描述一致）。
+
+修复（内核，需刷机）：`rx_slot[] = { 1, 0 }`，即让 0x40 取 slot 1、0x42 取 slot 0。
+
+顺带核对：两个 codec 的 `sound-name-prefix` 只影响 mixer 控件名，不改变接线，
+所以换名字没用，必须换 slot。
+
+### 24.2 GPU 650 MHz 是现成的，不用改内核
+
+panfrost 的 chopin 钩子早就在树里，DTS 的 mali 节点也已经带了
+`core_pll = <&apmixed 0xb>` 和 `core_slow = <&clk26m>`，所以
+`/sys/devices/platform/13000000.mali/core_clk_rate` 一直都在（日志里那句
+"no core_clk_rate knob" 是旧内核留下的，现在能看到这个节点就是证明）。
+
+实测：
+
+    $ cat /sys/devices/platform/13000000.mali/core_clk_rate
+    349999848
+    $ echo 650000000 > ...
+    $ cat ...
+    650000000
+    panfrost: chopin: GPU core 349999848 -> 650000000 Hz
+    （gnome-shell 存活，无 gpu fault/reset）
+
+注意两点：**写 349999848 会 EINVAL**（PLL 打不到这个精确值，写 650M/450M 都行）；
+**不要写 750 MHz**，上游实测比 650 更慢（欠压信号）。
+
+固化为 `chopin-gpu-freq.service` + `/etc/chopin-gpu-freq`（默认 650000000），
+在 gdm 之前执行；删掉这个文件就回到 bootloader 的频率。
+
+### 24.3 PD 补丁其实已经在内核里
+
+`git show HEAD:drivers/usb/typec/tcpm/tcpci_mt6360.c` 里已经有那两段 chopin 改动
+（`TCPC_POWER_CTRL = 0x70`、`TCPC_ALERT_MASK` 解掩码），TC 端口也是走
+mainline `tcpci_mt6360` + TCPM：
+
+    $ ls /sys/class/typec/
+    port0  port0-partner
+    $ cat /sys/class/typec/port0/power_operation_mode
+    default
+
+`default` 是因为当时插的是 PC USB 口（SDP），本来就没有 PD 合约。
+**要验证 PD 得用 PD 充电器 + C-to-C 线**：插上后
+`power_operation_mode` 应该变成 `usb_power_delivery`，VBUS 升到 9/12 V。
+
+### 24.4 电量显示：现在是真的在充
+
+    时间      SOC  电流       电压     说明
+    01:35     84%  -8000 uA   4284 mV   SDP 500 mA，净放电
+    01:52     85%  182000 uA  4303 mV   充电电流服务生效
+    02:20     85%  291000 uA  4326 mV   稳定爬升（charge_full=4451 mAh）
+
+按 291 mA 算大约 4 %/h，从 85% 到满还要三小时左右 —— 这是 900 mA SDP 输入
+扣掉机身功耗后的上限。想快只有两条路：用 PD 充电器（12 V/2.25 A），
+或把 `/etc/chopin-charge-limit` 抬到 1500000（上游实测输入 1.5 A 时进电池 1157 mA，
+但 PC 口可能过流保护，慎用）。
+
+### 24.5 电源键：加了一个模式开关
+
+`/etc/chopin-powerkey-mode`：
+
+* `lock`（默认）—— 熄屏 + `loginctl lock-sessions`，亮屏回锁屏；
+* `blank` —— 只熄屏，桌面保持解锁（按一下回到原来的界面）。
+
+改完 `systemctl restart chopin-powerkey` 即可。
+
+### 24.6 不用刷机就把内核改动装上（模块级改动）
+
+这次只改了 machine driver（`CONFIG_SND_SOC_MT6893_MT6359=m`），所以不用动
+boot.img：
+
+    ./scripts/build.sh                      # 产出 linux/sound/soc/mediatek/mt8192/mt6893-mt6359.ko
+    scp mt6893-mt6359.ko root@<ip>:/tmp/
+    # 设备上：停 pipewire → 备份旧 .ko → install → depmod → modprobe → 重启
+
+**坑：vermagic 必须和运行内核一致。** 这个树用 `scripts/setlocalversion` 里的
+`CHOPIN_LOCALVERSION` 固定 release 后缀（当前设备是
+`7.3.4-g5775fb2ac0a1-dirty`），但直接 `make` 出来的模块带的是 **HEAD 的 hash**
+（这次是 `7.3.4-g8a02e232374a-dirty`），`modprobe` 会报 `Exec format error`。
+另外设备上的 `insmod` 是 busybox 版，**不支持 `--force-vermagic`**。
+
+两个可行做法：
+
+1. 构建前导出 `CHOPIN_LOCALVERSION=-g5775fb2ac0a1-dirty`（整棵重编，慢）；
+2. 只改这一次的话，直接等长替换 .ko 里的 vermagic 字符串（本次用的办法）：
+
+       python3 - <<'PY'
+       p="mt6893-mt6359.ko"; d=open(p,"rb").read()
+       d=d.replace(b"7.3.4-g8a02e232374a-dirty", b"7.3.4-g5775fb2ac0a1-dirty")
+       open(p,"wb").write(d)
+       PY
+
+另外发现两个**独立**的问题，记下来以后修：
+
+* `modprobe -r snd_soc_mt8192_afe` 会在 `clk_core_unprepare` 里 WARN
+  （`mt8192_afe_disable_clock` 对没 prepare 的时钟做 unprepare），removal 路径不干净；
+  所以这次是"换 .ko + 重启"，不是"rmmod/insmod"。
+* 重新插入的 AFE 会 probe 失败（`mt8192-audio ... -EACCES: failed to resume device`），
+  重启后正常 —— 也印证了 AFE 没有可用的 remove/reprobe 路径。
+
+---
+
+## 25. 2026-11-16 02:00–02:30：Chrome 崩溃取证 → SWIOTLB 太小
+
+用户报"Chrome 刚崩了，之前也有别的系统软件崩"，要求抓日志。
+完整取证包在 [analysis/logs-2026-11-16/](../analysis/logs-2026-11-16/2026-11-16/README.md)，
+结论如下。
+
+### 25.1 直接原因：panfrost 作业故障 → Chrome GPU 进程死
+
+    [  761.241737] panfrost 13000000.mali: Unhandled Page fault in AS0 at VA 0x0000000000000000
+                   exception type 0xC2: TRANSLATION_FAULT_2
+                   access type 0x3: WRITE
+    [  761.241802] panfrost 13000000.mali: js fault, js=1, status=JOB_BUS_FAULT
+    [  761.749053] panfrost 13000000.mali: gpu sched timeout, js=1 ...
+
+761 s ≈ 02:16，正好对上 Chrome 的日志：
+
+    Mojo error in GPU process: Received bad user message (viz.mojom.CompositorFrameSink)
+    ## V8 sandbox violation detected!
+    minidump: SIGSEGV addr=0x0 / SIGSEGV addr=0x20 / SIGABRT / SIGTRAP ×7
+
+即：GPU 作业往 GPU 地址空间的 0 号地址写（不是 CPU 的段错误）→ GPU 卡死 →
+Chrome 的 GPU 进程被判定死亡，Mojo 管道断开，随后渲染进程一并崩。
+"V8 sandbox violation"是**后果**（内存已乱），不是原因。
+
+### 25.2 系统隐患：SWIOTLB 只有 2 MB
+
+cmdline 里有 `swiotlb=0`，内核于是只建 2 MB 的 bounce pool（1024 × 2 KB slot），
+而 mediatek-drm 单次要 2–5 MB：
+
+    $ dmesg | grep -c "swiotlb buffer is full"
+    114                      # 本次启动
+    # 上两次启动分别是 53 / 54 次
+
+也就是说**每次开机显示子系统都有几十上百次缓冲区分配失败**，它会直接影响合成
+（mutter）和 GPU 的 BO 映射；panfrost 那个"写到 0 号地址"的作业，很可能就是
+某次分配失败后没有正确映射的 BO。
+
+修复：`CONFIG_CMDLINE` 里 `swiotlb=0` → `swiotlb=32768`（32768 × 2 KB = 64 MB）。
+编译时用 `CHOPIN_LOCALVERSION=-g5775fb2ac0a1-dirty` 固定 release，保证
+**现有模块的 vermagic 不变**，只换 boot.img：
+
+    $ strings vmlinux | grep -m1 7.3.4-g
+    7.3.4-g5775fb2ac0a1-dirty
+    $ python3 scripts/mkbootimg.py --stock dist/.../boot.img \
+        --kernel linux/arch/arm64/boot/Image.gz --ramdisk /tmp/boot-ramdisk \
+        -o out/boot-chopin-swiotlb.img
+    kernel=18201614 ramdisk=1019618 dtb=201848 page=2048
+    sha256 0c4b8e0ee361dda5f22ce52a019c1f244cd868d4b1b28e3415cce670117fd8f6
+
+刷完先看 `dmesg | grep -c "swiotlb buffer is full"` 应当为 0；若 panfrost 仍报 fault，
+按顺序排除：GPU 频率降回 350（`rm /etc/chopin-gpu-freq`）、Chrome 加 `--disable-gpu`。
+
+### 25.3 其它崩溃/告警（都不是崩溃）
+
+* `app-gnome-gnome-keyring-secrets.scope: Failed with result 'resources'` —— 自动登录
+  没有 PAM 密码，keyring 解不开（已知，无碍）；
+* `gnome-session-x11-services-ready.target` / `XSettings.service` 失败 —— 我们是 Wayland
+  会话，X11 目标本来就不该启动，镜像里可以清掉；
+* `filter-chain.service` / `wireplumber.service` 在 02:03–02:20 之间几次
+  `failed with result 'dependency'`，但最终都起来了（`pactl` 有 sink），
+  是会话启动顺序的抖动；
+* 三个 boot 的 journal 里**没有**任何用户进程 segfault / core dump 记录，
+  内核也没有 oops（只有上面那条 GPU fault）。
+
+---
+
+## 26. 2026-11-16 02:40–02:45：SWIOTLB 提大没用 → 真正的坑是 256 KiB 上限 + 32 位 DMA mask
+
+刷上 `swiotlb=32768`（64 MB）之后，`swiotlb buffer is full` **仍然是 95 次/启动**，
+而且现场的计数很怪：`used 0 (slots)` 也照样失败。
+
+### 26.1 为什么提大没用
+
+`kernel/dma/swiotlb.c` 里第一道检查：
+
+    if (alloc_size > IO_TLB_SEGSIZE * IO_TLB_SIZE)
+            return -1;              /* IO_TLB_SEGSIZE=128, IO_TLB_SIZE=2048 */
+
+也就是**单次 bounce 映射的硬上限是 128 × 2048 = 256 KiB**，跟池子多大无关。
+而 mediatek-drm 请求的尺寸是 512 KiB / 1 MiB / 2 MiB / 8 MiB / 14 MiB
+（14 MiB ≈ 1080×2400×4 的 scanout），全部超过上限 → 永远失败。
+
+### 26.2 为什么显示要 bounce
+
+`mtk_drm_crtc.c` 在初始化时把 coherent mask 拉回 32 位：
+
+    dma_set_coherent_mask(dev, DMA_BIT_MASK(32));
+
+而 `mtk_drm_drv.c` 里那处 34 位的设置被 `if (of_get_property(dev->of_node, "dma-ranges"))`
+包着，我们的 DTS 的 mmsys 节点**没有 `dma-ranges`**，所以从来没有生效。
+结果是：设备只认 4 GiB 以内的地址，5 GiB 内存里大多数 scanout/GPU buffer 都在 4 GiB 之上
+→ 全部走 bounce → 全部因为 256 KiB 上限失败。
+
+失败的直接后果不是"显示不出"，而是**合成器拿到坏 buffer**：客户端提交的 surface
+被拒绝/丢弃，mutter 断开会话连接，客户端收到 Wayland `Error 71 (协议错误)` 直接退出 ——
+正好对上 Nautilus 和 Chrome 的死法：
+
+    [  689.465871] mediatek-drm: swiotlb buffer is full (sz: 1048576 bytes), used 0 (slots)
+    Nov 16 02:38:59 nautilus[4390]: Error 71 (协议错误) dispatching to Wayland display.
+
+（上一轮那条 panfrost `VA 0` 作业故障也在这个解释里：buffer 没映射成功，作业指向 0。）
+
+### 26.3 修复
+
+显示引擎本来就支持 34 位（`mtk_disp_ovl.c` 里就是`DMA_BIT_MASK(34)`），所以：
+
+* `mtk_drm_crtc.c`：coherent mask 32 → **34**；
+* `mtk_drm_drv.c`：不再依赖 `dma-ranges`，**无条件** 34 位。
+
+这样 >4 GiB 的 buffer 直接映射，不再需要 bounce，256 KiB 上限也就无从触发。
+镜像：`out/boot-chopin-dma34.img`（release 仍固定为 `7.3.4-g5775fb2ac0a1-dirty`，
+模块不需要换），sha256 `bed72ed3e4e59fdf521f17eafdab1cb1ed5db7b23ccfeb630788832ca3a56c95`。
+
+验收：`dmesg | grep -c "swiotlb buffer is full"` 应为 0；Nautilus / Chrome 连续用不再被
+`Error 71` 杀掉；`/proc/cmdline` 里 `swiotlb=32768` 保留（小尺寸请求的兜底）。
+
+---
+
+## 27. 2026-11-16 03:10–03:20：实测定下 CPU 频率 —— A78 只有 729 MHz
+
+前面一直用 clk_summary 猜，这次做了个不依赖 CPU 型号的测量：交叉编译一个
+"依赖链加法" 循环（每次迭代 16 条 `add`，串行依赖，1 周期/条），钉核跑：
+
+    cpu= 0  0.018 s  1780.3 M adds/s  => ~1.780 GHz     ← A55
+    cpu= 2  0.018 s  1777.6 M adds/s  => ~1.778 GHz     ← A55
+    cpu= 4  0.044 s  728.6 M adds/s   => ~0.729 GHz     ← A78
+    cpu= 6  0.044 s  728.4 M adds/s   => ~0.728 GHz     ← A78
+    cpu=-1（不钉核）                => ~1.784 GHz      ← 调度器跑去了小核
+
+和 `clk_summary` 完全对上：`armpll_bl0..3 = 729999909`、`armpll_ll = 1790999146`。
+
+**结论：4 颗 A78 停在厂商 OPP 表的最低档附近**（`mtk_cpufreq_opp_table.h` 里
+big 核是 2.6 GHz … 659 MHz），只有 2.6 GHz 的 28%。而 A78@729MHz 和 A55@1.78GHz
+吞吐差不多，调度器当然优先用小核 —— 桌面上所有合成/布局都压在 A55 上，这就是"卡顿"。
+
+### 为什么一直没调起来
+
+厂商的 CPU DVFS 不是简单的 LUT：
+
+* 频率：`CONFIG_HYBRID_CPU_DVFS` + **MCUPM 固件**（Tinysys 小核）通过
+  **MCUSYS CSRAM（`CSRAM_BASE = 0x0011bc00`）** 里的表来切 PLL/DSU；
+* 电压：VPROC（MT6359，Linux 里能读能写，现在两个都是 750 mV）配
+  VSRAM（**MT6315，走 SPMI**，我们没移植 SPMI，完全够不着）；
+* mainline 的 `mediatek-cpufreq-hw` 是给 MT8183/8192/8195 的 LUT 接口，
+  MT6893 的 DT 里只有个空的 `mediatek,mt-cpufreq` 节点，没有寄存器描述。
+
+所以内核从来没人碰过 CPU 频率，LK 给多少就是多少。
+
+### 三条路
+
+| 方案 | 做法 | 风险 | 工作量 |
+| --- | --- | --- | --- |
+| A 固定提频（先做） | 离线上大核 → 重锁 `armpll_bl*`（和 GPU 651→650 那招同源）→ 上线；电压沿用 LK 的 750 mV，先小步试 1.0/1.2 GHz | 中：PLL 重锁毛刺可能挂死；只需重启即可恢复 | 一次刷机（加 DTS 节点/小驱动）+ 若干次重启 |
+| B 正统 DVFS | 移植 MCUPM + IPI/mbox + cpufreq，按厂商 OPP/PV 表调频调压 | 高 | 和 DRM/GPU 移植同量级 |
+| C 先不动 | 继续做 USB host / 蓝牙 | 无 | — |
+
+方案 A 的前提是：先让内核里有个能 `clk_set_rate(armpll_blX)` 的入口
+（现在没有，DTS 里没有任何设备引用 armpll_bl/armpll_ll），所以**至少要刷一次机**。
+
+
+
+
+
+
+
+
+### 27.1 方案 A 的实现（2026-11-16 03:20，已构建，待刷机）
+
+* 内核：新增 `drivers/misc/chopin-cpuclk.c`（`CONFIG_CHOPIN_CPUCLK=m`），把
+  `armpll_bl0..3` / `armpll_ll` 通过 `chopin,cpuclk` DT 节点交给驱动，暴露
+  `/sys/devices/platform/chopin-cpuclk/{bl_freq,ll_freq}`；**写之前要求 cpu4..7 全部
+  offline**（带锁 PLL 重锁会把 MCUSYS AXI 卡死，GPU 提频那次验证过），范围限制在
+  1.5–2.6 GHz（`mtk_pll` 的 fmin 是 1500 MHz，所以没有比 1.5 GHz 更低的档）。
+* 镜像：`out/boot-chopin-cpuclk.img`（release 仍为 `7.3.4-g5775fb2ac0a1-dirty`），
+  sha256 `01dfc4a41e5318e1245a9c534c35123d86788a5525a57abdd2690d6047404e5c`；
+  模块 `chopin-cpuclk.ko` 单独 scp 进去（vermagic 已对齐）。
+* 测试：`for c in 4 5 6 7; do echo 0 > /sys/devices/system/cpu/cpu$c/online; done` →
+  `echo 1500000000 > .../bl_freq` → 逐个 online → 用依赖链基准钉核复测。
+* **风险**：CPU 电压在 MT6315（SPMI，读不到也改不了），1.5 GHz 是否欠压只能试；
+  挂死就手动断电重启（LK 每次都会把 PLL 重置回 729 MHz，不会持久化）。
+  回滚镜像：`out/boot-chopin-dma34.img`。
+
+## 28. 2026-11-16 03:20–03:50：A78 拉到 1.5 GHz（方案 A 成功）
+
+### 28.1 实测
+
+    before: cpu4..7 = 729 MHz (armpll_bl0..3 = 729999909)
+    after:  cpu4..7 = 1497-1498 MHz (armpll_bl = 1499998780)
+            cpu0..3 不变（armpll_ll = 1790999146）
+
+    45 s 全大核 + 小核 + 内存压测：0 SError / 0 UFS 错误，电池 35.8 °C
+
+### 28.2 实现（两次都是纯用户态，第二次只用了已刷进内核的驱动）
+
+* 内核 `drivers/misc/chopin-cpuclk.c` + DTS `chopin,cpuclk` 节点：暴露
+  `armpll_bl0..3` / `armpll_ll`，写之前强制要求 cpu4..7 全部 offline，范围 1.5–2.6 GHz；
+* `chopin-cpu-freq.service` + `/etc/chopin-cpu-freq`（默认 1500000000）：开机
+  `modprobe` → offline 大核 → 写频率 → online，实测开机自动生效；
+* 服务器脚本做了 1 kHz 容差（PLL 读回 1499998780，不可能精确命中 1.5e9）。
+
+### 28.3 坑：A/B 槽位会自己切
+
+刷 `boot_a` 后第一次重启还在新内核上，第二次重启 LK 却回到了 `boot_b`（旧镜像，
+内核 build 时间 02:20）。判断方法：`cat /proc/version` 看 build 时间、
+`ls /proc/device-tree/*cpuclk*` 看新 DT 节点在不在。
+**以后刷机一律两个槽一起刷**：`fastboot flash boot_a` + `flash boot_b`。
+
+### 28.4 顺带修的：充电提前判满（对应"满电只显示 89%"）
+
+* `constant_charge_voltage` 复位值是 4.35 V，而电池 `voltage-max-design = 4.46 V`，
+  电量计按 4.46 V 算 100%，所以 4.35 V 只报 89%；
+* `charge_term_current` 最小 100 mA，但 900 mA 输入时进电池只有 ~300 mA，
+  很容易掉到 100 mA 以下 → 提前 EOC，而且**驱动不会自动重启充电**，状态一直卡 `Full`；
+* 修复：`chopin-charge-tune` 把 CV 提到 4.4 V；新增 `chopin-charge-recharge.timer`
+  （5 分钟一次）在 `Full` 且 `capacity < 99` 时把输入限流 0 → 900 mA 循环一次，
+  清掉锁存的 Full。实测 `Full → Charging`，电池 +286 mA、4.36 V 并在上升。

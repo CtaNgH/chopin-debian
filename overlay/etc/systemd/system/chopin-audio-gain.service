@@ -1,0 +1,12 @@
+[Unit]
+Description=chopin: raise the CS35L41 analog speaker gain
+After=sound.target
+Wants=sound.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/chopin-audio-gain.sh
+
+[Install]
+WantedBy=multi-user.target

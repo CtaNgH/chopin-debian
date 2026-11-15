@@ -1,0 +1,14 @@
+[Unit]
+Description=chopin: raise the Mali-G77 core clock
+# Run before the session starts: the GPU is idle, so parking the mux on clk26m
+# for a moment cannot interrupt anything.
+Before=gdm.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/chopin-gpu-freq.sh
+
+[Install]
+WantedBy=multi-user.target

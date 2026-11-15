@@ -11,3 +11,6 @@ idle-delay=uint32 0
 [org/gnome/settings-daemon/plugins/power]
 sleep-inactive-ac-type='nothing'
 sleep-inactive-battery-type='nothing'
+# 电源键由 /usr/local/bin/chopin-powerkey 直接读 evdev 处理（切背光）；
+# 不要让 gsd 抢去挂起/关机，这块板挂起不可用。
+power-button-action='nothing'

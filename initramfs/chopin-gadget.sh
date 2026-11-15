@@ -20,9 +20,28 @@ has_net() {
     ls "$G/functions" 2>/dev/null | grep -qE '^(ncm|rndis)\.usb0$'
 }
 
+# 谁还开着 /dev/ttyGS0？
+# rmdir acm.usb0 会走 acm_free_instance() -> gserial_free_line() -> gserial_free_port()，
+# 那里是 wait_event(close_wait, gs_closed(port))：tty 还被任何进程开着就永远等下去
+# （ps 里 rmdir 是 D 状态）。initramfs 里把 pstore 倒给 ttyGS0 的后台进程会活过
+# switch_root，正好撞上；getty 也可能开着。先把持有者清掉，rmdir 才不会挂。
+drop_ttygs_holders() {
+    for p in /proc/[0-9]*/fd; do
+        pid=${p#/proc/}
+        pid=${pid%/fd}
+        [ "$pid" = "$$" ] && continue
+        if ls -l "$p" 2>/dev/null | grep -q 'ttyGS0'; then
+            log "killing pid $pid which holds ttyGS0"
+            kill -9 "$pid" 2>/dev/null
+        fi
+    done
+}
+
 # configfs 的属性文件不能 unlink，rm -rf 删不干净：必须按顺序 rm 软链 + rmdir。
 teardown() {
     echo "" > "$G/UDC" 2>/dev/null
+    sleep 1
+    drop_ttygs_holders
     sleep 1
     for l in "$G"/configs/c.1/*; do
         [ -L "$l" ] && rm -f "$l"

@@ -1,0 +1,9 @@
+[Unit]
+Description=chopin: re-arm charging after a premature end-of-charge
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
