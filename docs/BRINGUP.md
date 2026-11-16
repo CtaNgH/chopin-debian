@@ -1726,3 +1726,284 @@ big 核是 2.6 GHz … 659 MHz），只有 2.6 GHz 的 28%。而 A78@729MHz 和 
 * 修复：`chopin-charge-tune` 把 CV 提到 4.4 V；新增 `chopin-charge-recharge.timer`
   （5 分钟一次）在 `Full` 且 `capacity < 99` 时把输入限流 0 → 900 mA 循环一次，
   清掉锁存的 Full。实测 `Full → Charging`，电池 +286 mA、4.36 V 并在上升。
+
+---
+
+## 29. 2026-11-16 04:00–04:20：A78 1.8 GHz 实测通过 + 频率写进内核
+
+### 29.1 试频结果（实机，当前运行中）
+
+procedure 和 1.5 GHz 那次一样，只是目标值 1.8e9：
+
+    for c in 4 5 6 7; do echo 0 > /sys/devices/system/cpu/cpu$c/online; done
+    echo 1800000000 > /sys/devices/platform/chopin-cpuclk/bl_freq
+    for c in 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu$c/online; done
+
+    bl_freq 读回 1799998536（PLL 分频只能到 1.799998 GHz，误差 1.5 kHz）
+
+依赖链加法基准（`/root/clk2 <cpu>`，空闲时测）：
+
+    cpu0 1780.2 M adds/s (A55，没变)
+    cpu4 1793.1 M adds/s
+    cpu5 1797.3 M adds/s
+    cpu6 1796.9 M adds/s
+    cpu7 1797.2 M adds/s        ← 原来是 728.6 M，2.47 倍
+
+8 分钟压力（8 条 spinner 钉 0-7 + 一个 512 MiB dd 循环，每 30 s 采样）：
+
+    n=0..15  online=0-7  bl=1799998536  err=0
+    电池温度 37 → 43 °C，容量 92 → 90 %，净放电 -0.34 → -0.68 A（900 mA 输入不够）
+    0 条 SError / UFS 错误 / panic，4 颗大核全程没有掉线
+
+### 29.2 稳定就把频率写进内核（本次已实现）
+
+做法是 **DT 属性 + 驱动 probe 时应用**，不是"用户态开机跑脚本"：
+
+* DTS 节点加 `chopin,bl-freq-hz = <1800000000>;`（1.5 GHz 时代没有这个属性，
+  频率只存在于 `/etc/chopin-cpu-freq`）；
+* `drivers/misc/chopin-cpuclk.c` 改成自己做大核 offline → 写 PLL → online
+  （以前要求用户态先 offline，现在 `echo ... > bl_freq` 一条命令就够，sysfs 语义向后兼容）；
+* `CONFIG_CHOPIN_CPUCLK=y`：内置后 probe 在 init 之前跑，**开机就是 1.8 GHz，
+  不依赖 rootfs 里的 service**；真正的重锁放在 probe 排的 workqueue 里做（initcall
+  上下文里停机器/拿 hotplug 锁虽然合法但不常见，万一卡住会赔上整个启动），
+  `chopin-cpu-freq.service` 留着当运行时覆盖（`/etc/chopin-cpu-freq` 也同步改成
+  1800000000，两边不一致时以文件为准）。
+
+镜像：`out/boot-chopin-cpuclk18.img`（也拷到了 `D:\MT6891-Mainline\out\`），sha256
+`ff493a82da3cb63b7d0f497be780e34f2d5029bceb8b934d564ead3c94729cdd`；
+回滚镜像仍是 `out/boot-chopin-cpuclk.img`（1.5 GHz，已验证）。
+
+刷完之后的第二次 8 分钟满载（04:29–04:38）：电池 40 → 45 °C、净放电 -0.7 A、
+0 条错误、4 颗大核全程 online，卸载后复测 1.797–1.798 GHz（A55 1.768）。
+
+**已刷入并验证（2026-11-16 04:29）**：`fastboot flash boot_a` 后重启，内核
+`7.3.4-g5775fb2ac0a1-dirty`（#31），dmesg 里 0.94 s 打印
+`armpll_bl=729999909`、0.96 s 就已经是 `1799998536` —— 在 init 之前就生效；
+`/root/clk2 4` = 1.787~1.796 GHz，0 failed unit，USB（NCM）/WiFi/声卡/GPU 650 MHz 全在。
+
+刷机（**只刷 boot_a，boot_b 留 1.5 GHz 那版当退路**）：
+
+    fastboot --set-active=a
+    fastboot flash boot_a out/boot-chopin-cpuclk18.img
+    fastboot reboot
+
+起来后验证：`cat /sys/devices/platform/chopin-cpuclk/bl_freq` 应为 1799998536，
+`/root/clk2 4` 应报 ~1.79 GHz，`dmesg | grep cpuclk` 应有
+"armpll_bl now 1799998536 Hz"；如果卡在开机，断电重进 fastboot 刷回
+`out/boot-chopin-cpuclk.img` 即可（LK 每次启动都会把 PLL 复位到 729 MHz，不会烧死）。
+
+注意：
+
+* **电压没动**：`vproc1/vproc2 = 750 mV` 还是 LK 留下的值，1.8 GHz 是在这个电压下
+  跑通的；想再往上（2.0/2.2 GHz）必须先解决电压，否则就是纯碰运气；
+* **没有 CPU 温度传感器**：`thermal_zone0` 只有电量计（bq27z561），内核不会降频，
+  满载靠环境散热；电池 43 °C 时 SoC 大概率更高；
+* 1.8 GHz 的 A78 单核吞吐已经是 A55 的 2.5 倍，桌面合成/浏览器这类单线程负载受益最大。
+
+### 29.3 坑：release 字符串跟着 commit 变，结果一个模块都加载不了
+
+第一次刷完新内核后 `usb0` 起不来，gadget 从 NCM 回退到 RNDIS（Windows 上没有 RNDIS 驱动，
+USB 网就断了，只能走 WiFi 192.168.1.220 或串口）。
+
+* 直接原因：`CONFIG_USB_F_NCM=m`，而 `mkdir ncm.usb0` 返回 ENOENT —— 模块加载失败；
+* 根因：`uname -r` 变成了 `7.3.4-ge0edeca25aa8-dirty`（当前 HEAD 的 `git describe`），
+  而 `/lib/modules` 里只有 `7.3.4-g5775fb2ac0a1-dirty`，vermagic 不匹配（本移植
+  `CONFIG_MODVERSIONS=n`，release 是唯一的检查）；
+* `scripts/setlocalversion` 早就有 `CHOPIN_LOCALVERSION` 钩子，但之前靠手工
+  `export`，`build.sh` 没设 —— 于是**每提交一次，release 就变一次**；
+* 修复：`build.sh` 默认 `export CHOPIN_LOCALVERSION=-g5775fb2ac0a1-dirty`。
+  以后改内核只换 Image.gz + dtb 就行，device 上的模块树一直有效。
+
+### 29.4 为什么这还不是 cpufreq
+
+* 四颗大核的时钟 mux 在 **MCUSYS**（vendor `mcucfg`），mainline `clk-mt6893-topckgen`
+  里没有这些 mux，所以 Linux 既不能"切到另一颗空闲 PLL"，也不能动态改频 ——
+  只能把 4 颗 PLL 全锁到同一个值再重启核；
+* 电压在 **MT6315（SPMI）**，本移植没有 SPMI，VPROC 只有 MT6359 那两路（750 mV 固定）；
+* 所以真正的 DVFS = 移植 mcucfg mux + SPMI/MT6315 + 厂商 PV 表 + 温控 zone，
+  工作量和 DRM/GPU 移植同级（PLAN P1 的 B 方案）。在那之前，DT 里这个固定频率
+  就是"内核里的频率"。
+
+---
+
+## 30. 2026-11-16 04:45–05:00：USB host 通了 —— 根因是端口数读得太早
+
+### 30.1 现象
+
+每台都报：
+
+    xhci-mtk 11200000.usb: USB0 root hub has no ports
+
+于是插什么都不枚举。之前分析（PLAN §12.2）以为是 DTS 的 xhci 子节点缺 `phys`，
+这次实测发现不是：xhci 的 port 数来自控制器自己的 HCSPARAMS1，跟 `phys` 无关。
+
+### 30.2 根因
+
+`mtu3_host.c` 里 `host_ports_num_get()` 在 `ssusb_host_setup()` 里被调用，
+而那时 **host IP 还处于 PDN（power-down）**，`U3D_SSUSB_IP_XHCI_CAP`（0x11203e24）
+读回 0 → u2_ports=0 → 一个端口都不配置 → `of_platform_populate()` 紧接着创建的
+xhci 子设备 probe 时 HCSPARAMS1 也读回 0 → 注册出来的 root hub 没有端口。
+
+实测证据：host 模式起来之后再 `unbind/bind` 一次 xhci-mtk，日志立刻变成
+`hub 1-0:1.0: 1 port detected`；直接读寄存器 0x11203e24 = 0x00000100
+（U3=0、U2=1），0x11200004（HCSPARAMS1）= 0x0100020F（MaxPorts=1）。
+
+### 30.3 修改
+
+1. `mtu3_host.c`：把 `host_ports_num_get()` 挪到 `ssusb_host_enable()` 里、
+   清掉 `SSUSB_IP_HOST_PDN` 之后再做，端口数就对了；
+2. DTS `usb@11201000` 加 `vbus-supply = <&otg_vbus>`：MT6360 的 OTG 升压
+   （5.05 V）才是 host 模式真正给外设供电的东西。之前因为怕 charger 探测失败
+   把 mtu3 拖进永久 defer 而没加；实测 charger 1.13 s 就 probe 完，mtu3 只
+   defer 一次，没问题。
+
+### 30.4 验证（已经刷进两个槽）
+
+* 开机日志：`hub 1-0:1.0: 1 port detected`（以前是一条都不报）；
+* `lsusb -t` → `Bus 001.Port 001: Dev 001, Class=root_hub, Driver=xhci-mtk/1p, 480M`；
+* `echo host > /sys/class/usb_role/11201000.usb-role-switch/role` 之后
+  `usb-otg-vbus` 变成 `enabled / 5050000 uV`，切回 `device` 又变 `disabled`；
+* 1.8 GHz、0 failed unit 都不受影响。
+
+镜像：`out/boot-chopin-usbhost.img`，sha256
+`4b62529c8532913969a98815a04adfad13ac446a912da3d9b6de52195a9b4b70`。
+**boot_a 和 boot_b 都刷了**（只刷 a 时 LK 有一次回退到 b，跑回了 03:19 的旧内核）。
+
+**还差最后一步**：插一个 OTG 转接头 + U 盘/键盘，把 role 切到 host，看
+`dmesg` 有没有枚举。手机插在电脑上时不能切 host（两边同时供 5 V）。
+
+---
+
+## 31. 2026-11-16 05:05：USB 网卡"突然连不上"—— DHCP 池被历史租约占满
+
+### 31.1 现象
+
+重启后 `usb0` 在手机侧是 UP（192.168.42.2），Windows 侧的 "UsbNcm Host Device"
+也显示 Up，但只拿到 169.254.x 自动地址，SSH 报 No route to host。
+
+### 31.2 根因
+
+`journalctl -u chopin-gadget` 里每几秒一条：
+
+    dnsmasq-dhcp[935]: DHCPDISCOVER(usb0) fa:41:b8:9a:12:f5 no address available
+
+gadget 脚本给的池是 `192.168.42.100-110`（**11 个地址**），租期 12 h；
+Windows 每次重连/重装适配器都会用一个**新的随机 MAC**，每个新 MAC 都吃掉一个租约，
+几十次刷机/重启之后池子就满了 —— 而 `/var/lib/misc/dnsmasq.leases` 里躺着的
+11 条全是早已不存在的主机。
+
+### 31.3 修复
+
+* 池扩大到 `192.168.42.100-199`（100 个），租期降到 2 h，`--dhcp-lease-max=150`；
+* 启动时清掉上一次的租约文件（主机重连时会重新 DISCOVER，代价只是一次换地址）；
+* 实机上直接重启 dnsmasq 后，Windows `ipconfig /renew` 立刻拿到 192.168.42.136，
+  USB SSH 恢复。
+
+**这件事的教训**：以后"USB 网突然不通"先看 `journalctl -u chopin-gadget` 有没有
+`no address available`，别先去怀疑 NCM 驱动。
+
+---
+
+## 32. 2026-11-16 05:00–05:45：1.8 GHz 45 分钟冷热交替 soak
+
+脚本 `/tmp/soak45.sh`：每轮 30 s 八核满载（8 条 spinner 钉 0-7）+ 30 s 空闲，逐分钟采样，共 45 轮。
+
+    05:44:52 done err-total=0
+    cpu0 1.779 GHz（A55，没动）
+    cpu4..7 1.797–1.798 GHz
+
+| 指标 | 结果 |
+| --- | --- |
+| SError / UFS / panic / Oops | **0**（45 轮采样里累计计数始终 0） |
+| 4 颗大核在线 | 45 轮全部 `online=0-7` |
+| 电池温度 | 38 → 44 °C |
+| 电量/电流 | 90 %、净放电 -0.4 ~ -0.7 A（充电输入 900 mA 不够） |
+| failed unit | 0 |
+| pstore | 只有 4 月那条旧的 NVT panic 和当前 boot 的 console 记录，没有新 panic |
+
+之后又起了一个 **8 小时**的低占空比测试（每 10 分钟 20 s 双核负载 + 采样，日志 `/tmp/on.log`），
+用来覆盖"过夜 idle + 轻载"这一档 P0 场景；早上看 `/tmp/on.log` 的 err 列和 pstore 即可。
+
+---
+
+## 33. 2026-11-16 05:47–13:22：8.5 小时低占空比过夜测试（1.8 GHz）
+
+脚本 `/tmp/on.sh`：每 10 分钟一轮，20 s 双核（cpu0 + cpu4）负载，其余时间 idle，逐轮采样。
+
+    2026-11-16 05:47:16 start  bl=1799998536
+    ... 48 轮，每轮 err=0、bl=1799998536 ...
+    2026-11-16 13:22:00 n=47 temp=33C cap=93 err=0 bl=1799998536
+
+| 指标 | 结果 |
+| --- | --- |
+| 轮次 | 48/48，全部 `err=0` |
+| SError / UFS / panic / Oops | **0**（dmesg 累计 0；pstore 没有新增记录） |
+| 频率 | 全程 `bl=1799998536`；结束后复测 cpu4..7 = 1.796–1.797 GHz |
+| 温度 | 33–42 °C（空闲 33，20 s 双核负载时最高 42） |
+| 电量 | 90 → 93 %（在充电，未插拔） |
+| failed unit | 0 |
+| 内存 | 1030 MB / 5128 MB，无泄漏迹象 |
+
+**结论**：A78 固定在 1.8 GHz 的情况下，过夜 idle + 轻载这一档没有再触发 SError；
+P0 的"偶发"特性没有被证伪也没被证死 —— 之前桌面满载 30 分钟崩过一次，这一夜是轻载。
+
+> 时间线：05:47 起跑，13:22 第 48 轮结束。用户 13:18 问"完成没有"，最后几轮和
+> 收尾的 bench 是补读的，没等脚本打印 done。
+
+### 30.5 实物验证（2026-11-16 13:30）：端口通了，枚举没通
+
+插上 OTG 设备（手机脱离电脑，`otg_vbus=5050000 uV` enabled）后：
+
+    usb 1-1: new high-speed USB device number 2 using xhci-mtk
+    xhci-mtk 11200000.usb: ERROR: unexpected setup address command completion code 0x11.
+    usb 1-1: device not accepting address 2, error -22
+    ...
+    xhci-mtk 11200000.usb: xHCI host controller not responding, assume dead
+    xhci-mtk 11200000.usb: HC died; cleaning up
+
+* **好消息**：chirp 成功、按 high-speed 识别 —— 说明 VBUS 5 V、D+/D-、U2 PHY 的模拟通路都是通的，
+  端口模式（host）也切对了；
+* **坏消息**：`SET_ADDRESS` 一直返回 0x11（USB Transaction Error），三次重试后控制器直接挂死；
+* 试过 `usb2-lpm-disable` + `rx-fifo-depth = <3072>`（mt8195-cherry 的配置，镜像
+  `out/boot-chopin-usbhost2.img`，sha256 `9224c30e…`），**没有改善**。
+
+判断：这不是 VBUS/role-switch 的问题，而是 MT6893 的 xHCI 在 USB2 host 数据通路上的集成问题
+（IPPC/U2 PHY 的时序或 vendor 特有的寄存器初始化）。下一步要么对照厂商 DTS/驱动里 xhci 节点的
+额外属性，要么上 USB 分析仪抓 SET_ADDRESS 前后的总线状态。
+
+现状：role 已切回 `device`，gadget 正常，1.8 GHz、0 failed unit 都不受影响。
+
+### 30.6 更正（2026-11-16 13:41）：直连 OTG 成功，问题出在带 hub 的转接头
+
+用户换掉“带 hub 的转接头”，改用**直连 OTG 转接头 + 2.4G 键盘接收器**，重启后开机 2.4 s 就枚举成功：
+
+    usb 1-1: new full-speed USB device number 2 using xhci-mtk
+    input: 2.4G Dongle as .../usb1/1-1/1-1:1.0/.../input3
+    hid-generic 0003:0C45:FEFE.0001: input: USB HID v1.00 Keyboard [2.4G Dongle] on usb-11200000.usb-1/input0
+
+    $ lsusb
+    Bus 001 Device 002: ID 0c45:fefe Microdia 2.4G Dongle
+
+    $ cat /proc/bus/input/devices
+    N: Name="2.4G Dongle"                       H: Handlers=kbd event7
+    N: Name="2.4G Dongle System Multi Axis"     H: Handlers=event8
+    N: Name="2.4G Dongle" (if01)                Handlers=mouse0 event9
+
+/dev/input/by-id/ 下同时出现 keyboard / mouse / multi-axis 三个节点，说明 HID 三层都起来了。
+
+**所以 USB host 是通的**，之前 SET_ADDRESS 0x11 的失败只发生在“带 hub 的转接头”上 ——
+那个 hub 在地址分配阶段就挂了，然后把控制器拖死。直连一个全速 HID 设备完全正常。
+
+结论修正：不是 MT6893 xHCI 的 USB2 数据通路坏了，而是**hub 的枚举**有问题（可能和 xhci 的
+TT/多端口支持、或 hub 的 port power 有关）。带 hub 的场景先记成已知限制，直连 OTG 可用。
+
+**按键事件实测（13:53）**：在 `/dev/input/event3` 上抓到 36 个事件，解码后是
+`KEY_A(30)`、`KEY_D(32)`、`KEY_ENTER(28)` 的按下/抬起各一次、重复两轮：
+
+    EV_MSC code=4 val=458756
+    EV_KEY code=30 val=1     ← KEY_A 按下
+    EV_KEY code=30 val=0
+    EV_KEY code=32 val=1     ← KEY_D
+    EV_KEY code=28 val=1     ← KEY_ENTER
+
+用户也确认“实际使用是正常的”。USB host 这条链路（端口 → VBUS → 枚举 → HID → 输入事件）已全部验证通过。

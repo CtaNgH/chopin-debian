@@ -131,8 +131,13 @@ if command -v ip >/dev/null 2>&1; then
         ip addr add 192.168.42.2/24 dev "$n" 2>/dev/null
         if command -v dnsmasq >/dev/null 2>&1; then
             [ -f "/tmp/chopin-dnsmasq-$n.pid" ] && kill "$(cat "/tmp/chopin-dnsmasq-$n.pid")" 2>/dev/null
-            dnsmasq --interface="$n" --dhcp-range=192.168.42.100,192.168.42.110,12h \
-                --port=0 --dhcp-option=3 --dhcp-option=6 --pid-file=/tmp/chopin-dnsmasq-$n.pid 2>/dev/null
+            # 100 addresses, not 11: the host picks a random MAC per adapter instance,
+            # so every replug leaves a 12 h lease behind and the old /29-style range
+            # ran out after a dozen reconnects ("no address available" in the log).
+            rm -f /var/lib/misc/dnsmasq.leases
+            dnsmasq --interface="$n" --dhcp-range=192.168.42.100,192.168.42.199,2h \
+                --dhcp-lease-max=150 --port=0 --dhcp-option=3 --dhcp-option=6 \
+                --pid-file=/tmp/chopin-dnsmasq-$n.pid 2>/dev/null
             log "dnsmasq started on $n"
         fi
     done

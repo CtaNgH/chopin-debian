@@ -30,9 +30,11 @@ while [ ! -e "$SYS/bl_freq" ]; do
 done
 
 cur=$(cat "$SYS/bl_freq")
-# The PLL cannot hit the requested value exactly (1.5 GHz reads back as
-# 1499998780), so treat anything within 1 kHz as "already there".
-if [ "$cur" -ge $((hz - 1000)) ] 2>/dev/null && [ "$cur" -le $((hz + 1000)) ] 2>/dev/null; then
+# The PLL cannot hit the requested value exactly (1.8 GHz reads back as
+# 1799998536), so treat anything within 10 kHz as "already there" - a 1 kHz
+# window is narrower than the PLL granularity and re-pinned the cluster on
+# every boot even when the kernel had already set the same frequency.
+if [ "$cur" -ge $((hz - 10000)) ] 2>/dev/null && [ "$cur" -le $((hz + 10000)) ] 2>/dev/null; then
     echo "chopin-cpu-freq: already at $cur Hz"
     exit 0
 fi
